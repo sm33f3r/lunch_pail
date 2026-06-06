@@ -1,13 +1,14 @@
 """
 ingest.py — Core data ingestion for the Lunch Pail NFL prediction system.
 
-Covers: schedules, games, rosters, players, injuries, snap_counts, depth_charts.
-Play-by-play is handled separately.
+Covers: play_by_play, schedules, games, rosters, players, injuries,
+        snap_counts, depth_charts.
 
 Usage:
     python ingest.py                  # runs seasons 2014-2024
 """
 
+import gc
 import math
 import os
 import sys
@@ -776,20 +777,232 @@ def ingest_depth_charts(seasons: list) -> dict:
 
 
 # ---------------------------------------------------------------------------
+# 6. ingest_pbp  →  play_by_play
+# ---------------------------------------------------------------------------
+
+# Only the 20 columns we store — selecting before to_dicts() keeps the
+# 372-column PBP frame from bloating memory as Python dicts.
+_PBP_COLS = [
+    "game_id", "play_id", "posteam", "defteam",
+    "down", "ydstogo", "yardline_100",
+    "epa", "wpa", "air_yards", "yards_gained", "play_type",
+    "passer_player_id", "rusher_player_id", "receiver_player_id",
+    "qb_dropback", "qb_scramble", "pass_attempt", "rush_attempt", "penalty",
+]
+
+_PBP_INSERT = text("""
+    INSERT INTO play_by_play (
+        game_id, play_id, posteam, defteam,
+        down, ydstogo, yardline_100,
+        epa, wpa, air_yards, yards_gained, play_type,
+        passer_player_id, rusher_player_id, receiver_player_id,
+        qb_dropback, qb_scramble, pass_attempt, rush_attempt, penalty
+    ) VALUES (
+        :game_id, :play_id, :posteam, :defteam,
+        :down, :ydstogo, :yardline_100,
+        :epa, :wpa, :air_yards, :yards_gained, :play_type,
+        :passer_player_id, :rusher_player_id, :receiver_player_id,
+        :qb_dropback, :qb_scramble, :pass_attempt, :rush_attempt, :penalty
+    )
+    ON CONFLICT (game_id, play_id) DO NOTHING
+""")
+
+_PBP_CHUNK_SIZE = 1000
+
+
+def _ensure_pbp_unique_index(engine) -> None:
+    """
+    Ensure a UNIQUE INDEX on play_by_play(game_id, play_id) exists so that
+    ON CONFLICT (game_id, play_id) has an arbiter.
+
+    CREATE INDEX IF NOT EXISTS is idempotent; the surrounding try/except
+    absorbs any edge-case DB errors without aborting the ingest run.
+    """
+    try:
+        with engine.begin() as conn:
+            conn.execute(text("""
+                CREATE UNIQUE INDEX IF NOT EXISTS uq_pbp_game_play
+                ON play_by_play (game_id, play_id)
+            """))
+        print("  [pbp] unique index on (game_id, play_id) ensured", flush=True)
+    except Exception as exc:
+        print(f"  [pbp] WARNING: could not create unique index: {exc}", flush=True)
+
+
+def ingest_pbp(seasons: list) -> dict:
+    """
+    Ingest play-by-play rows into `play_by_play`, one season at a time.
+
+    nflreadpy column notes (2023 observed):
+      - season_type  — filter to 'REG'  (field is 'season_type', not 'game_type')
+      - play_id      — Float64; coerced to int via _int_or_none()
+      - All binary flag columns (down, ydstogo, yards_gained, qb_dropback,
+        qb_scramble, pass_attempt, rush_attempt, penalty, yardline_100) are
+        Float64 in nflreadpy due to null rows; coerced to int or None.
+      - epa, wpa, air_yards remain as float.
+
+    Memory strategy:
+      - Select only the 20 needed columns before calling to_dicts() to avoid
+        bloating Python dicts with all 372 PBP columns (~50 K rows × 372 = large).
+      - Delete the Polars DataFrame and call gc.collect() in the finally block
+        after each season.
+      - Commit every 1 000-row chunk so partial progress is preserved if the
+        process is interrupted mid-season.
+      - One SQLAlchemy connection is opened per season and closed when done.
+    """
+    engine = get_engine()
+    totals = {"play_by_play": 0}
+
+    _ensure_pbp_unique_index(engine)
+
+    for season in sorted(seasons):
+        df = None  # ensure del df is safe in finally even if load fails
+        try:
+            print(f"  [pbp] {season}: loading...", flush=True)
+            df = nflreadpy.load_pbp(seasons=[season])
+
+            total_fetched = len(df)
+
+            # Filter to REG season only
+            if "season_type" in df.columns:
+                df = df.filter(pl.col("season_type") == "REG")
+            elif "game_type" in df.columns:
+                df = df.filter(pl.col("game_type") == "REG")
+
+            reg_count = len(df)
+            print(
+                f"  [pbp] {season}: {total_fetched:,} total rows, "
+                f"{reg_count:,} REG rows",
+                flush=True,
+            )
+
+            if reg_count == 0:
+                continue
+
+            # Narrow to only the columns we store — large memory saving
+            available = [c for c in _PBP_COLS if c in df.columns]
+            df = df.select(available)
+            df = _fill_nan(df)
+
+            # Fetch valid game_ids for this season from DB (FK guard)
+            with engine.connect() as _conn:
+                result = _conn.execute(
+                    text("SELECT game_id FROM games WHERE season = :s"),
+                    {"s": season},
+                )
+                valid_game_ids: set = {row[0] for row in result}
+
+            print(
+                f"  [pbp] {season}: {len(valid_game_ids)} valid game_ids in DB",
+                flush=True,
+            )
+
+            # Build typed row dicts
+            pbp_rows = []
+            for r in df.to_dicts():
+                r = _clean(r)
+                game_id = r.get("game_id")
+                if game_id not in valid_game_ids:
+                    continue
+                play_id = _int_or_none(r.get("play_id"))
+                if play_id is None:
+                    continue
+
+                pbp_rows.append({
+                    "game_id":             game_id,
+                    "play_id":             play_id,
+                    "posteam":             _trunc(r.get("posteam"), 10),
+                    "defteam":             _trunc(r.get("defteam"), 10),
+                    "down":                _int_or_none(r.get("down")),
+                    "ydstogo":             _int_or_none(r.get("ydstogo")),
+                    "yardline_100":        _int_or_none(r.get("yardline_100")),
+                    "epa":                 _float_or_none(r.get("epa")),
+                    "wpa":                 _float_or_none(r.get("wpa")),
+                    "air_yards":           _float_or_none(r.get("air_yards")),
+                    "yards_gained":        _int_or_none(r.get("yards_gained")),
+                    "play_type":           _trunc(r.get("play_type"), 30),
+                    "passer_player_id":    _trunc(r.get("passer_player_id"), 20),
+                    "rusher_player_id":    _trunc(r.get("rusher_player_id"), 20),
+                    "receiver_player_id":  _trunc(r.get("receiver_player_id"), 20),
+                    "qb_dropback":         _int_or_none(r.get("qb_dropback")),
+                    "qb_scramble":         _int_or_none(r.get("qb_scramble")),
+                    "pass_attempt":        _int_or_none(r.get("pass_attempt")),
+                    "rush_attempt":        _int_or_none(r.get("rush_attempt")),
+                    "penalty":             _int_or_none(r.get("penalty")),
+                })
+
+            if not pbp_rows:
+                print(f"  [pbp] {season}: 0 insertable rows after game_id filter", flush=True)
+                continue
+
+            # Chunk inserts — one connection for the whole season
+            chunks = [
+                pbp_rows[i : i + _PBP_CHUNK_SIZE]
+                for i in range(0, len(pbp_rows), _PBP_CHUNK_SIZE)
+            ]
+            total_chunks = len(chunks)
+
+            with engine.connect() as conn:
+                before = conn.execute(_COUNT("play_by_play")).scalar()
+
+                for idx, chunk in enumerate(chunks, 1):
+                    print(
+                        f"  [pbp] {season}: chunk {idx}/{total_chunks}",
+                        flush=True,
+                    )
+                    conn.execute(_PBP_INSERT, chunk)
+                    conn.commit()
+
+                after = conn.execute(_COUNT("play_by_play")).scalar()
+
+            season_inserted = after - before
+            totals["play_by_play"] += season_inserted
+            print(
+                f"  [pbp] {season}: inserted {season_inserted:,} plays",
+                flush=True,
+            )
+
+        except Exception as exc:
+            print(
+                f"  [pbp] ERROR season {season}: {exc}",
+                file=sys.stderr, flush=True,
+            )
+
+        finally:
+            del df
+            gc.collect()
+
+    return totals
+
+
+# ---------------------------------------------------------------------------
 # run_all
 # ---------------------------------------------------------------------------
 
 def run_all(seasons) -> dict:
-    """Run all five ingest functions in dependency order and print a summary."""
+    """
+    Run all ingest functions in dependency order and print a summary.
+
+    Order:
+      1. Schedules & Games  — populates games table (PBP FK dependency)
+      2. Play-by-Play       — largest dataset; must precede team_stats (Step 5)
+      3. Rosters & Players
+      4. Injuries
+      5. Snap Counts
+      6. Depth Charts
+    """
     seasons = sorted(seasons)
     print(f"\n{'=' * 62}")
-    print(f"  Lunch Pail ingest  |  seasons {seasons[0]}–{seasons[-1]}")
+    print(f"  Lunch Pail ingest  |  seasons {seasons[0]}\u2013{seasons[-1]}")
     print(f"{'=' * 62}\n")
 
     summary: dict = {}
 
     print("── Schedules & Games ──────────────────────────────────────")
     summary.update(ingest_schedules(seasons))
+
+    print("\n── Play-by-Play ────────────────────────────────────────────")
+    summary.update(ingest_pbp(seasons))
 
     print("\n── Rosters & Players ──────────────────────────────────────")
     summary.update(ingest_rosters(seasons))
@@ -804,10 +1017,12 @@ def run_all(seasons) -> dict:
     summary.update(ingest_depth_charts(seasons))
 
     print(f"\n{'=' * 62}")
-    print("  INGEST COMPLETE  —  rows inserted per table")
-    print(f"  {'─' * 38}")
-    table_order = ["schedules", "games", "players", "rosters",
-                   "injuries", "snap_counts", "depth_charts"]
+    print("  INGEST COMPLETE  \u2014  rows inserted per table")
+    print(f"  {'\u2500' * 38}")
+    table_order = [
+        "schedules", "games", "play_by_play", "players", "rosters",
+        "injuries", "snap_counts", "depth_charts",
+    ]
     for tbl in table_order:
         count = summary.get(tbl, 0)
         print(f"  {tbl:<20s}  {count:>10,}")
