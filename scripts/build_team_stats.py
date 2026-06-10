@@ -11,7 +11,8 @@ season.  The script is idempotent: ON CONFLICT (game_id, team) DO NOTHING
 means it is safe to re-run without creating duplicates.
 
 Usage:
-    python scripts/build_team_stats.py
+    python scripts/build_team_stats.py                 # Build all team stats
+    python scripts/build_team_stats.py --fix-pre-relocation  # Fix null EPA for OAK/SD/STL
 
 Known data limitations (documented here, not masked):
   * turnover_differential
@@ -27,6 +28,11 @@ Known data limitations (documented here, not masked):
       The play_by_play schema has no fumble_lost / fumble_recovery columns.
       Fumble-based turnover contribution is entirely absent from
       turnover_differential.
+
+Bug fixes applied:
+  * Pre-relocation team abbreviations (OAK, SD, STL)
+      Fixed in v1.1: team abbreviations normalized in CTEs before aggregation.
+      Use --fix-pre-relocation flag to update existing null rows.
 """
 
 import os
@@ -77,8 +83,19 @@ WITH
 season_pbp AS (
     SELECT
         p.game_id,
-        p.posteam,
-        p.defteam,
+        -- Normalize team abbreviations for pre-relocation teams
+        CASE p.posteam
+            WHEN 'OAK' THEN 'LV'
+            WHEN 'SD'  THEN 'LAC'
+            WHEN 'STL' THEN 'LA'
+            ELSE p.posteam
+        END AS posteam,
+        CASE p.defteam
+            WHEN 'OAK' THEN 'LV'
+            WHEN 'SD'  THEN 'LAC'
+            WHEN 'STL' THEN 'LA'
+            ELSE p.defteam
+        END AS defteam,
         p.down,
         p.ydstogo,
         p.yardline_100,
@@ -283,6 +300,108 @@ ON CONFLICT (game_id, team) DO NOTHING
 _COUNT_SQL = text("SELECT COUNT(*) FROM team_stats")
 
 # ---------------------------------------------------------------------------
+# Fix for pre-relocation team abbreviation bug
+# ---------------------------------------------------------------------------
+_COUNT_NULL_SQL = text("""
+SELECT COUNT(*)
+FROM team_stats
+WHERE offensive_epa_per_play IS NULL
+""")
+
+_FIND_AFFECTED_ROWS_SQL = text("""
+SELECT game_id, team
+FROM team_stats
+WHERE offensive_epa_per_play IS NULL
+ORDER BY game_id, team
+""")
+
+_UPDATE_SINGLE_ROW_SQL = text("""
+UPDATE team_stats SET
+    offensive_epa_per_play = (
+        SELECT AVG(epa) FROM play_by_play
+        WHERE game_id = :game_id
+        AND (pass_attempt = 1 OR rush_attempt = 1)
+        AND CASE posteam
+                WHEN 'OAK' THEN 'LV'
+                WHEN 'SD'  THEN 'LAC'
+                WHEN 'STL' THEN 'LA'
+                ELSE posteam
+            END = :team
+        AND epa IS NOT NULL
+    ),
+    defensive_epa_per_play_allowed = (
+        SELECT AVG(epa) FROM play_by_play
+        WHERE game_id = :game_id
+        AND (pass_attempt = 1 OR rush_attempt = 1)
+        AND CASE defteam
+                WHEN 'OAK' THEN 'LV'
+                WHEN 'SD'  THEN 'LAC'
+                WHEN 'STL' THEN 'LA'
+                ELSE defteam
+            END = :team
+        AND epa IS NOT NULL
+    ),
+    third_down_conv_rate_off = (
+        SELECT CASE WHEN COUNT(*) > 0
+               THEN SUM(CASE WHEN yards_gained >= ydstogo THEN 1.0
+                        ELSE 0.0 END) / COUNT(*)
+               ELSE NULL END
+        FROM play_by_play
+        WHERE game_id = :game_id AND down = 3
+        AND CASE posteam
+                WHEN 'OAK' THEN 'LV'
+                WHEN 'SD'  THEN 'LAC'
+                WHEN 'STL' THEN 'LA'
+                ELSE posteam
+            END = :team
+    ),
+    third_down_conv_rate_def = (
+        SELECT CASE WHEN COUNT(*) > 0
+               THEN SUM(CASE WHEN yards_gained >= ydstogo THEN 1.0
+                        ELSE 0.0 END) / COUNT(*)
+               ELSE NULL END
+        FROM play_by_play
+        WHERE game_id = :game_id AND down = 3
+        AND CASE defteam
+                WHEN 'OAK' THEN 'LV'
+                WHEN 'SD'  THEN 'LAC'
+                WHEN 'STL' THEN 'LA'
+                ELSE defteam
+            END = :team
+    ),
+    red_zone_efficiency_off = (
+        SELECT CASE WHEN COUNT(*) > 0
+               THEN AVG(epa) ELSE NULL END
+        FROM play_by_play
+        WHERE game_id = :game_id
+        AND yardline_100 <= 20
+        AND (pass_attempt = 1 OR rush_attempt = 1)
+        AND CASE posteam
+                WHEN 'OAK' THEN 'LV'
+                WHEN 'SD'  THEN 'LAC'
+                WHEN 'STL' THEN 'LA'
+                ELSE posteam
+            END = :team
+    ),
+    red_zone_efficiency_def = (
+        SELECT CASE WHEN COUNT(*) > 0
+               THEN AVG(epa) ELSE NULL END
+        FROM play_by_play
+        WHERE game_id = :game_id
+        AND yardline_100 <= 20
+        AND (pass_attempt = 1 OR rush_attempt = 1)
+        AND CASE defteam
+                WHEN 'OAK' THEN 'LV'
+                WHEN 'SD'  THEN 'LAC'
+                WHEN 'STL' THEN 'LA'
+                ELSE defteam
+            END = :team
+    )
+WHERE game_id = :game_id AND team = :team
+AND offensive_epa_per_play IS NULL
+""")
+
+# ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
 
@@ -322,5 +441,75 @@ def build_team_stats(seasons: list = SEASONS) -> int:
     return total_inserted
 
 
+def fix_pre_relocation_stats() -> int:
+    """
+    Fix team_stats rows for OAK, SD, STL with null EPA values.
+    Updates only the 176 affected rows without re-running full build.
+    """
+    engine = create_engine(DATABASE_URL, future=True)
+
+    print(f"\n{'=' * 60}")
+    print("  fix_pre_relocation_stats")
+    print(f"{'=' * 60}\n")
+
+    try:
+        # Count null rows before fix
+        with engine.connect() as conn:
+            before_null = conn.execute(_COUNT_NULL_SQL).scalar()
+
+        print(f"  Null EPA rows before fix: {before_null}")
+
+        if before_null == 0:
+            print("  No null EPA rows found — nothing to fix")
+            return 0
+
+        # Get list of affected rows
+        with engine.connect() as conn:
+            affected_rows = conn.execute(_FIND_AFFECTED_ROWS_SQL).fetchall()
+
+        print(f"  Found {len(affected_rows)} rows to fix")
+
+        # Process all rows in a single transaction
+        updated_rows = 0
+        with engine.begin() as conn:
+            for i, row in enumerate(affected_rows, 1):
+                game_id = row.game_id
+                team = row.team
+
+                # Update single row
+                result = conn.execute(
+                    _UPDATE_SINGLE_ROW_SQL,
+                    {"game_id": game_id, "team": team}
+                )
+                if result.rowcount > 0:
+                    updated_rows += 1
+
+                # Print progress every 20 rows
+                if i % 20 == 0 or i == len(affected_rows):
+                    print(f"  Processed {i}/{len(affected_rows)} rows...")
+
+        # Count null rows after fix
+        with engine.connect() as conn:
+            after_null = conn.execute(_COUNT_NULL_SQL).scalar()
+
+        print(f"\n  Rows updated: {updated_rows}")
+        print(f"  Null EPA rows after fix: {after_null}")
+
+        if after_null == 0:
+            print(f"\n  ✓ All {updated_rows} null rows fixed successfully")
+        else:
+            print(f"\n  ⚠ {after_null} null rows remain after fix")
+
+        return updated_rows
+
+    except SQLAlchemyError as exc:
+        print(f"  ERROR during fix: {exc}", file=sys.stderr, flush=True)
+        return 0
+
+
 if __name__ == "__main__":
-    build_team_stats()
+    # Check for command line argument to run fix
+    if len(sys.argv) > 1 and sys.argv[1] == "--fix-pre-relocation":
+        fix_pre_relocation_stats()
+    else:
+        build_team_stats()

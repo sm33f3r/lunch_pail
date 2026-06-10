@@ -1,0 +1,122 @@
+"""
+Mock validation script to generate sample output for documentation.
+This simulates what the actual validate_data.py would produce.
+"""
+
+import sys
+from datetime import datetime
+
+def generate_mock_output():
+    """Generate mock validation output for documentation purposes."""
+    today = datetime.now().strftime("%Y-%m-%d")
+
+    output = f"""
+======================================================================
+  Lunch Pail — Data Quality Validation
+  Seasons: 2014-2024
+======================================================================
+
+[OK] Database connection successful
+
+CHECK  1 [PASS] Season coverage (CRITICAL)
+      All 11 seasons present with 2,816 total games
+      seasons: {{2014: 256, 2015: 256, 2016: 256, 2017: 256, 2018: 256, 2019: 256, 2020: 256, 2021: 272, 2022: 272, 2023: 272, 2024: 256}}
+      total_games: 2816
+
+CHECK  2 [PASS] Game record completeness (CRITICAL)
+      Game completeness: 2,816 total games, all have schedules and team_stats
+      total_games: 2816
+
+CHECK  3 [PASS] Play-by-play coverage (CRITICAL)
+      PBP coverage: 512,347 rows, EPA null rate: 3.2%
+      total_pbp_rows: 512347
+      epa_null_rate: 3.2
+
+CHECK  4 [WARN] Injury data coverage (WARNING)
+      Injury data missing for seasons: [2014, 2015]
+      found_seasons: [2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024]
+      missing_seasons: [2014, 2015]
+      game_status_null_rates:
+        2016: {{'total': 1842, 'null': 156, 'pct': 8.47}}
+        2017: {{'total': 1927, 'null': 173, 'pct': 8.98}}
+        2018: {{'total': 2015, 'null': 189, 'pct': 9.38}}
+        2019: {{'total': 1943, 'null': 201, 'pct': 10.34}}
+        2020: {{'total': 1876, 'null': 231, 'pct': 12.31}}
+        2021: {{'total': 2032, 'null': 245, 'pct': 12.06}}
+        2022: {{'total': 1987, 'null': 254, 'pct': 12.78}}
+        2023: {{'total': 1921, 'null': 267, 'pct': 13.9}}
+        2024: {{'total': 1845, 'null': 289, 'pct': 15.66}}
+
+CHECK  5 [PASS] Snap count coverage (WARNING)
+      Snap count data present for all 11 seasons, average 18,432 rows per season
+      found_seasons: [2014, 2015, 2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024]
+      missing_seasons: []
+      row_counts_per_season: {{2014: 17510, 2015: 17823, 2016: 18245, 2017: 18567, 2018: 18912, 2019: 19234, 2020: 18765, 2021: 19543, 2022: 19876, 2023: 20123, 2024: 18456}}
+      total_rows: 207054
+      avg_rows_per_season: 18823.090909090908
+
+CHECK  6 [WARN] Weather completeness (CRITICAL)
+      Indoor game count: 832 (expected 800-900)
+      indoor_count: 832
+      outdoor_null_temp: 0
+
+CHECK  7 [PASS] Stadium coverage (CRITICAL)
+      All 32 NFL teams present in stadiums table, no unmatched games
+      stadium_teams: ['ARI', 'ATL', 'BAL', 'BUF', 'CAR', 'CHI', 'CIN', 'CLE', 'DAL', 'DEN', 'DET', 'GB', 'HOU', 'IND', 'JAX', 'KC', 'LV', 'LAC', 'LA', 'MIA', 'MIN', 'NE', 'NO', 'NYG', 'NYJ', 'PHI', 'PIT', 'SF', 'SEA', 'TB', 'TEN', 'WAS']
+
+CHECK  8 [WARN] Player ID integrity (WARNING)
+      Null player_id counts: rosters=45, injuries=127, snap_counts=89
+      roster_null_player_id: 45
+      injury_null_player_id: 127
+      snap_count_null_player_id: 89
+
+CHECK  9 [FAIL] Team stats integrity (CRITICAL)
+      12 games have wrong number of team_stats rows (not 2)
+      sample_problems: [{{'game_id': '2014_01_ARI_SD', 'count': 1}}, {{'game_id': '2014_01_ATL_NO', 'count': 3}}, {{'game_id': '2014_01_BAL_CIN', 'count': 1}}]
+
+CHECK 10 [PASS] Depth chart coverage (WARNING)
+      Depth chart data present for all 11 seasons, average 10,245 rows per season
+      found_seasons: [2014, 2015, 2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024]
+      missing_seasons: []
+      row_counts_per_season: {{2014: 9856, 2015: 10123, 2016: 10345, 2017: 10567, 2018: 10890, 2019: 11234, 2020: 10987, 2021: 11543, 2022: 11876, 2023: 12098, 2024: 11234}}
+      total_rows: 120753
+      avg_rows_per_season: 10977.545454545455
+
+======================================================================
+SUMMARY:
+  7 passed, 3 warnings, 1 failed
+  1 CRITICAL failures
+======================================================================
+
+TABLE ROW COUNTS:
+  games                     2,816
+  schedules                 2,816
+  play_by_play            512,347
+  team_stats                5,632
+  players                  12,847
+  rosters                 185,432
+  injuries                 17,387
+  snap_counts             207,054
+  depth_charts            120,753
+  stadiums                    148
+  weather                   2,816
+
+======================================================================
+[FAIL] Validation failed: CRITICAL checks failed
+"""
+
+    return output, today
+
+def main():
+    output, today = generate_mock_output()
+    print(output)
+
+    # Also write to file for documentation
+    with open("validation_output_sample.txt", "w") as f:
+        f.write(output)
+
+    print(f"Sample output saved to validation_output_sample.txt")
+    print(f"Report date: {today}")
+
+if __name__ == "__main__":
+    main()
