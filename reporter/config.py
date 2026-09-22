@@ -77,6 +77,9 @@ class Settings:
     data_api_base_url: str
     clob_api_base_url: str
 
+    # Polymarket NFL tag — confirmed by recon; override only if Polymarket reassigns it
+    nfl_tag_id: int
+
     # Trading-relevant — required, no silent defaults
     volume_threshold: float
     volume_window: str
@@ -95,6 +98,7 @@ def _load() -> Settings:
         clob_api_base_url=_optional_str(
             "CLOB_API_BASE_URL", "https://clob.polymarket.com"
         ),
+        nfl_tag_id=int(_optional_str("NFL_TAG_ID", "450")),
         volume_threshold=_require_float("VOLUME_THRESHOLD"),
         volume_window=_require_volume_window("VOLUME_WINDOW"),
         report_output_dir=_require_path("REPORT_OUTPUT_DIR"),
