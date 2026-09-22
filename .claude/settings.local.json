@@ -1,9 +1,0 @@
-{
-  "permissions": {
-    "allow": [
-      "Bash(venv/Scripts/python.exe:*)",
-      "Bash(python scripts/validate_data.py)",
-      "Bash(python:*)"
-    ]
-  }
-}

@@ -22,3 +22,13 @@ roadmaps/
 
 # OS
 .DS_Store
+
+# Claude Code local config
+.claude/
+
+# Model artifacts
+*.pkl
+*.joblib
+
+# Reports output
+reports/
