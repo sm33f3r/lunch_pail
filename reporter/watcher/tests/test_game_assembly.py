@@ -294,25 +294,25 @@ class TestMarketDataFetchingScope:
         # extract_market_data must be called exactly once (for the moneyline only)
         assert mock_emd.call_count == 1
 
-    def test_spreads_entry_has_prices_only(self):
+    def test_spreads_entry_has_prices_and_line(self):
         with patch("reporter.watcher.game_assembly.extract_market_data") as mock_emd:
             mock_emd.return_value = {"prices": {"Away": 0.5, "Home": 0.5}, "open_interest": 100.0, "recent_trades": []}
             result = build_game_report_data(500, [_FULL_MARKETS_EVENT])
         assert result is not None
         assert len(result["spreads"]) == 1
         entry = result["spreads"][0]
-        assert set(entry.keys()) == {"prices"}, f"Expected only 'prices' key, got {set(entry.keys())}"
+        assert set(entry.keys()) == {"prices", "line"}, f"Expected {{'prices','line'}}, got {set(entry.keys())}"
         assert "open_interest" not in entry
         assert "recent_trades" not in entry
 
-    def test_totals_entry_has_prices_only(self):
+    def test_totals_entry_has_prices_and_line(self):
         with patch("reporter.watcher.game_assembly.extract_market_data") as mock_emd:
             mock_emd.return_value = {"prices": {"Away": 0.5, "Home": 0.5}, "open_interest": 100.0, "recent_trades": []}
             result = build_game_report_data(500, [_FULL_MARKETS_EVENT])
         assert result is not None
         assert len(result["totals"]) == 1
         entry = result["totals"][0]
-        assert set(entry.keys()) == {"prices"}, f"Expected only 'prices' key, got {set(entry.keys())}"
+        assert set(entry.keys()) == {"prices", "line"}, f"Expected {{'prices','line'}}, got {set(entry.keys())}"
         assert "open_interest" not in entry
         assert "recent_trades" not in entry
 
@@ -324,6 +324,14 @@ class TestMarketDataFetchingScope:
         spread_prices = result["spreads"][0]["prices"]
         assert spread_prices == pytest.approx({"Away": 0.48, "Home": 0.52})
 
+    def test_spreads_line_label_parsed(self):
+        with patch("reporter.watcher.game_assembly.extract_market_data") as mock_emd:
+            mock_emd.return_value = {"prices": {"Away": 0.5, "Home": 0.5}, "open_interest": 100.0, "recent_trades": []}
+            result = build_game_report_data(500, [_FULL_MARKETS_EVENT])
+        assert result is not None
+        # _spread_market() sets groupItemTitle="Spread -3.5" so line should be "-3.5"
+        assert result["spreads"][0]["line"] == "-3.5"
+
     def test_totals_prices_correct(self):
         with patch("reporter.watcher.game_assembly.extract_market_data") as mock_emd:
             mock_emd.return_value = {"prices": {"Away": 0.5, "Home": 0.5}, "open_interest": 100.0, "recent_trades": []}
@@ -331,6 +339,14 @@ class TestMarketDataFetchingScope:
         assert result is not None
         total_prices = result["totals"][0]["prices"]
         assert total_prices == pytest.approx({"Over": 0.51, "Under": 0.49})
+
+    def test_totals_line_label_parsed(self):
+        with patch("reporter.watcher.game_assembly.extract_market_data") as mock_emd:
+            mock_emd.return_value = {"prices": {"Away": 0.5, "Home": 0.5}, "open_interest": 100.0, "recent_trades": []}
+            result = build_game_report_data(500, [_FULL_MARKETS_EVENT])
+        assert result is not None
+        # _total_market() sets groupItemTitle="O/U 44.5" so line should be "44.5"
+        assert result["totals"][0]["line"] == "44.5"
 
     def test_moneyline_still_has_full_data(self):
         ml_data = {"prices": {"Away": 0.6, "Home": 0.4}, "open_interest": 500.0, "recent_trades": [{"side": "BUY"}]}
@@ -341,3 +357,109 @@ class TestMarketDataFetchingScope:
         assert result["moneyline"] == ml_data
         assert result["moneyline"]["open_interest"] == 500.0
         assert result["moneyline"]["recent_trades"] == [{"side": "BUY"}]
+
+
+# ---------------------------------------------------------------------------
+# PriceDataError tolerance: spreads/totals skipped, moneyline skips game
+# ---------------------------------------------------------------------------
+
+def _bad_spread_market(market_id="sp_bad"):
+    """Spread market whose prices don't sum to 1.0 — extract_prices() will raise."""
+    return {
+        "id": market_id,
+        "conditionId": "0xbad",
+        "sportsMarketType": "spreads",
+        "outcomes": json.dumps(["Away", "Home"]),
+        "outcomePrices": json.dumps(["0.10", "0.10"]),  # sums to 0.20, not ~1.0
+        "groupItemTitle": "Spread -3.5",
+    }
+
+
+def _bad_moneyline_market(market_id="ml_bad"):
+    """Moneyline market whose prices don't sum to 1.0 — extract_prices() will raise."""
+    return {
+        "id": market_id,
+        "conditionId": "0xmlbad",
+        "sportsMarketType": "moneyline",
+        "outcomes": json.dumps(["Away", "Home"]),
+        "outcomePrices": json.dumps(["0.10", "0.10"]),  # sums to 0.20, not ~1.0
+        "groupItemTitle": None,
+    }
+
+
+# Game 600: moneyline + one good spread + one BAD spread + one total
+_MIXED_SPREADS_EVENT = _game_event(
+    game_id=600,
+    slug="nfl-no-min-2026-09-28",
+    title="Saints vs. Vikings",
+    volume_24hr=20000.0,
+    markets=[
+        _moneyline_market(market_id="ml6", condition_id="0xml6"),
+        _spread_market(market_id="sp6_good", condition_id="0xsp6good"),
+        _bad_spread_market(market_id="sp6_bad"),
+        _total_market(market_id="tot6", condition_id="0xtot6"),
+    ],
+)
+
+# Game 700: moneyline with bad prices
+_BAD_ML_EVENT = _game_event(
+    game_id=700,
+    slug="nfl-ind-jax-2026-09-28",
+    title="Colts vs. Jaguars",
+    volume_24hr=20000.0,
+    markets=[_bad_moneyline_market()],
+)
+
+
+class TestPriceDataErrorTolerance:
+    def test_bad_spread_skipped_game_still_assembles(self):
+        with patch("reporter.watcher.game_assembly.extract_market_data") as mock_emd:
+            mock_emd.return_value = {"prices": {"Away": 0.5, "Home": 0.5}, "open_interest": 1.0, "recent_trades": []}
+            result = build_game_report_data(600, [_MIXED_SPREADS_EVENT])
+        assert result is not None, "Game should still assemble when only one spread line is bad"
+
+    def test_bad_spread_excluded_from_result(self):
+        with patch("reporter.watcher.game_assembly.extract_market_data") as mock_emd:
+            mock_emd.return_value = {"prices": {"Away": 0.5, "Home": 0.5}, "open_interest": 1.0, "recent_trades": []}
+            result = build_game_report_data(600, [_MIXED_SPREADS_EVENT])
+        assert result is not None
+        # Only the good spread survives; bad one is excluded
+        assert len(result["spreads"]) == 1
+        entry = result["spreads"][0]
+        assert entry["prices"] == pytest.approx({"Away": 0.48, "Home": 0.52})
+        assert "line" in entry
+
+    def test_good_total_unaffected_by_bad_spread(self):
+        with patch("reporter.watcher.game_assembly.extract_market_data") as mock_emd:
+            mock_emd.return_value = {"prices": {"Away": 0.5, "Home": 0.5}, "open_interest": 1.0, "recent_trades": []}
+            result = build_game_report_data(600, [_MIXED_SPREADS_EVENT])
+        assert result is not None
+        assert len(result["totals"]) == 1
+        assert result["totals"][0]["prices"] == pytest.approx({"Over": 0.51, "Under": 0.49})
+
+    def test_bad_spread_logged_to_skip_log(self):
+        skip_log: list = []
+        with patch("reporter.watcher.game_assembly.extract_market_data") as mock_emd:
+            mock_emd.return_value = {"prices": {"Away": 0.5, "Home": 0.5}, "open_interest": 1.0, "recent_trades": []}
+            build_game_report_data(600, [_MIXED_SPREADS_EVENT], _skip_log=skip_log)
+        assert len(skip_log) == 1
+        label, gid, mid = skip_log[0]
+        assert label == "spread"
+        assert gid == 600
+        assert mid == "sp6_bad"
+
+    def test_bad_moneyline_skips_entire_game(self):
+        with patch("reporter.watcher.game_assembly.extract_market_data") as mock_emd:
+            from reporter.watcher.market_data import PriceDataError
+            mock_emd.side_effect = PriceDataError("prices sum to 0.20")
+            result = build_game_report_data(700, [_BAD_ML_EVENT])
+        assert result is None, "Bad moneyline prices must cause the entire game to be skipped"
+
+    def test_bad_moneyline_does_not_log_to_skip_log(self):
+        # skip_log only tracks spread/total skips, not moneyline failures
+        skip_log: list = []
+        with patch("reporter.watcher.game_assembly.extract_market_data") as mock_emd:
+            from reporter.watcher.market_data import PriceDataError
+            mock_emd.side_effect = PriceDataError("prices sum to 0.20")
+            build_game_report_data(700, [_BAD_ML_EVENT], _skip_log=skip_log)
+        assert skip_log == []

@@ -13,7 +13,9 @@ their gameId.
 
 from __future__ import annotations
 
-from reporter.watcher.market_data import extract_market_data, extract_prices
+import re
+
+from reporter.watcher.market_data import PriceDataError, extract_market_data, extract_prices
 from reporter.watcher.market_grouping import group_markets_for_event
 from reporter.watcher.nfl_events import get_current_nfl_games
 from reporter.watcher.team_mapping import parse_teams_from_event
@@ -21,6 +23,16 @@ from reporter.watcher.volume_filter import get_event_volume, meets_volume_thresh
 from reporter.config import settings
 
 _POLYMARKET_EVENT_URL = "https://polymarket.com/event/{slug}"
+
+_SPREAD_LINE_RE = re.compile(r"^Spread\s+(.+)$", re.IGNORECASE)
+_TOTAL_LINE_RE  = re.compile(r"^O/U\s+(.+)$",    re.IGNORECASE)
+
+
+def _extract_line_label(market: dict, pattern: re.Pattern) -> str:
+    """Parse the numeric line value from a market's groupItemTitle field."""
+    title = market.get("groupItemTitle") or ""
+    m = pattern.match(title)
+    return m.group(1) if m else title
 
 
 def consolidate_events_by_game_id(events: list[dict]) -> dict[int, list[dict]]:
@@ -68,7 +80,11 @@ def select_representative_event(events_for_game: list[dict]) -> dict | None:
     return max(candidates, key=lambda e: get_event_volume(e, settings.volume_window))
 
 
-def build_game_report_data(game_id: int, events_for_game: list[dict]) -> dict | None:
+def build_game_report_data(
+    game_id: int,
+    events_for_game: list[dict],
+    _skip_log: list | None = None,
+) -> dict | None:
     """
     Build the structured report data object for one game.
 
@@ -80,10 +96,13 @@ def build_game_report_data(game_id: int, events_for_game: list[dict]) -> dict | 
     Args:
         game_id:          The integer gameId.
         events_for_game:  All events sharing this gameId.
+        _skip_log:        Internal — if provided, each skipped spread/total
+                          market appends (label, game_id, market_id) here.
 
     Returns:
         Structured dict with game identity, volume, and grouped market data;
-        or None if there is no moneyline event or the event fails the threshold.
+        or None if there is no moneyline event, the event fails the threshold,
+        or the moneyline prices are invalid.
     """
     rep = select_representative_event(events_for_game)
     if rep is None:
@@ -98,13 +117,44 @@ def build_game_report_data(game_id: int, events_for_game: list[dict]) -> dict | 
     slug       = rep.get("slug", "")
     event_url  = _POLYMARKET_EVENT_URL.format(slug=slug)
 
+    # Bad moneyline prices = skip the whole game (no usable primary signal).
     moneyline_data = None
     if grouped["moneyline"]:
-        moneyline_data = extract_market_data(grouped["moneyline"])
+        try:
+            moneyline_data = extract_market_data(grouped["moneyline"])
+        except PriceDataError as exc:
+            mid = grouped["moneyline"].get("id", "?")
+            print(f"  [WARN] game_id={game_id}: moneyline market {mid!r} bad price data — skipping game. {exc}")
+            return None
 
-    # Spreads and totals are secondary; only prices are needed (pure, no network call).
-    spreads_data = [{"prices": extract_prices(m)} for m in grouped["spreads"]]
-    totals_data  = [{"prices": extract_prices(m)} for m in grouped["totals"]]
+    # Spreads and totals are secondary; only prices are needed (pure, no network).
+    # Each entry also carries the line label parsed from groupItemTitle.
+    # A single bad line is skipped with a warning; others are unaffected.
+    spreads_data: list[dict] = []
+    for m in grouped["spreads"]:
+        try:
+            spreads_data.append({
+                "prices": extract_prices(m),
+                "line":   _extract_line_label(m, _SPREAD_LINE_RE),
+            })
+        except PriceDataError as exc:
+            mid = m.get("id", "?")
+            print(f"  [WARN] game_id={game_id}: spread market {mid!r} bad price data -- skipped. {exc}")
+            if _skip_log is not None:
+                _skip_log.append(("spread", game_id, mid))
+
+    totals_data: list[dict] = []
+    for m in grouped["totals"]:
+        try:
+            totals_data.append({
+                "prices": extract_prices(m),
+                "line":   _extract_line_label(m, _TOTAL_LINE_RE),
+            })
+        except PriceDataError as exc:
+            mid = m.get("id", "?")
+            print(f"  [WARN] game_id={game_id}: total market {mid!r} bad price data -- skipped. {exc}")
+            if _skip_log is not None:
+                _skip_log.append(("total", game_id, mid))
 
     return {
         "game_id":   game_id,
@@ -142,14 +192,16 @@ def get_reportable_games() -> list[dict]:
     total   = len(by_game)
     print(f"Fetched {len(events)} events across {total} distinct games; fetching market data for qualifying games...")
 
+    skip_log: list = []
     results = []
     for i, (game_id, game_events) in enumerate(by_game.items(), 1):
-        data = build_game_report_data(game_id, game_events)
+        data = build_game_report_data(game_id, game_events, _skip_log=skip_log)
         if data is not None:
             results.append(data)
             print(f"  [{i}/{total}] {data['away_abbr']} @ {data['home_abbr']}  vol=${data['volume']:,.0f}  OK ({len(results)} reportable)")
         else:
             print(f"  [{i}/{total}] game_id={game_id}  skipped")
 
-    print(f"Done. {len(results)}/{total} games reportable.")
+    skip_summary = f"  ({len(skip_log)} spread/total line(s) skipped — bad price data)" if skip_log else ""
+    print(f"Done. {len(results)}/{total} games reportable.{skip_summary}")
     return results
