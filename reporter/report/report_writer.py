@@ -11,7 +11,9 @@ are safe for downstream tooling and git diffs without encoding issues.
 
 from __future__ import annotations
 
+import os
 import re
+import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -207,7 +209,20 @@ def write_game_report(game: dict, output_dir: Path) -> Path:
     output_dir.mkdir(parents=True, exist_ok=True)
     filename = f"{game['game_date']}_{game['away_abbr']}_at_{game['home_abbr']}.md"
     path = output_dir / filename
-    path.write_text(format_game_report(game), encoding="utf-8")
+    content = format_game_report(game)
+    # Write to a temp file in the same directory then rename so a crash mid-write
+    # never leaves a truncated report at the final path.
+    fd, tmp = tempfile.mkstemp(dir=output_dir, suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            fh.write(content)
+        os.replace(tmp, path)
+    except Exception:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
     return path
 
 

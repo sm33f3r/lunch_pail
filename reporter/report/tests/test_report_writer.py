@@ -321,6 +321,33 @@ class TestWriteAllReports:
         assert not stale1.exists()
         assert not stale2.exists()
 
+    # ------------------------------------------------------------------
+    # Edge cases: Step 10 lifecycle hardening
+    # ------------------------------------------------------------------
+
+    def test_creates_output_dir_on_first_run(self, tmp_path):
+        # write_all_reports() must not crash when REPORT_OUTPUT_DIR doesn't exist yet.
+        new_dir = tmp_path / "brand" / "new" / "dir"
+        assert not new_dir.exists()
+        with patch("reporter.report.report_writer.get_reportable_games", return_value=[_sample_game()]), \
+             patch("reporter.report.report_writer.settings") as mock_settings:
+            mock_settings.report_output_dir = new_dir
+            write_all_reports()
+        assert new_dir.exists()
+
+    def test_zero_games_returns_empty_list_no_crash(self, tmp_path):
+        # write_all_reports() must return [] cleanly when no games are reportable.
+        with patch("reporter.report.report_writer.get_reportable_games", return_value=[]), \
+             patch("reporter.report.report_writer.settings") as mock_settings:
+            mock_settings.report_output_dir = tmp_path
+            result = write_all_reports()
+        assert result == []
+
+    def test_no_temp_files_remain_after_write(self, tmp_path):
+        # Atomic write must not leave .tmp files behind on success.
+        write_game_report(_GAME, tmp_path)
+        assert list(tmp_path.glob("*.tmp")) == []
+
 
 # ---------------------------------------------------------------------------
 # Line column, placeholder filtering, ASCII-only content
