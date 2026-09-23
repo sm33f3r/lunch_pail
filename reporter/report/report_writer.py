@@ -217,6 +217,7 @@ def write_game_report(game: dict, output_dir: Path) -> Path:
         with os.fdopen(fd, "w", encoding="utf-8") as fh:
             fh.write(content)
         os.replace(tmp, path)
+        os.chmod(path, 0o644)
     except Exception:
         try:
             os.unlink(tmp)

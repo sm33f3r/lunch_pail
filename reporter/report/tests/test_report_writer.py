@@ -348,6 +348,13 @@ class TestWriteAllReports:
         write_game_report(_GAME, tmp_path)
         assert list(tmp_path.glob("*.tmp")) == []
 
+    @pytest.mark.skipif(os.name == "nt", reason="POSIX permissions not enforced on Windows")
+    def test_written_file_permissions_are_0644(self, tmp_path):
+        import stat
+        path = write_game_report(_GAME, tmp_path)
+        mode = stat.S_IMODE(path.stat().st_mode)
+        assert mode == 0o644, f"Expected 0o644, got {oct(mode)}"
+
 
 # ---------------------------------------------------------------------------
 # Line column, placeholder filtering, ASCII-only content
