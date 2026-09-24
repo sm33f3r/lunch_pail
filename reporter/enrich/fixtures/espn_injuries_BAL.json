@@ -1,0 +1,411 @@
+{
+  "count": 62,
+  "injuries": [
+    {
+      "$ref": "http://sports.core.api.espn.com/v2/sports/football/leagues/nfl/seasons/2026/athletes/2576581/injuries/-2013625?lang=en&region=us",
+      "id": "-2013625",
+      "longComment": "questionable",
+      "shortComment": "questionable",
+      "status": "Questionable",
+      "date": "2026-09-24T07:01Z",
+      "athlete": {
+        "id": "2576581",
+        "fullName": "Chris Moore",
+        "displayName": "Chris Moore",
+        "shortName": "C. Moore",
+        "position": {
+          "name": "Wide Receiver",
+          "abbreviation": "WR",
+          "displayName": "Wide Receiver"
+        }
+      },
+      "team": {
+        "$ref": "http://sports.core.api.espn.com/v2/sports/football/leagues/nfl/seasons/2026/teams/33?lang=en&region=us"
+      },
+      "source": {
+        "id": "1",
+        "description": "basic/manual",
+        "state": "basic"
+      },
+      "type": {
+        "id": "2",
+        "name": "INJURY_STATUS_QUESTIONABLE",
+        "description": "questionable",
+        "abbreviation": "Q"
+      },
+      "details": {
+        "fantasyStatus": {
+          "description": "QUESTIONABLE",
+          "abbreviation": "QUESTIONABLE"
+        },
+        "type": "Ankle",
+        "location": "Leg",
+        "detail": "Not Specified",
+        "side": "Not Specified",
+        "returnDate": "2026-09-27"
+      }
+    },
+    {
+      "$ref": "http://sports.core.api.espn.com/v2/sports/football/leagues/nfl/seasons/2026/athletes/2980153/injuries/638955?lang=en&region=us",
+      "id": "638955",
+      "longComment": "Stanley re-injured his toe in the Ravens' Week 2 loss to the Saints. The starting left tackle has been dealing with a toe issue since the team's Week 1 win over the Colts. The 32-year-old overcame the issue to start the Week 2 game but aggravated the toe in the process, making it unclear what the next steps for the offensive lineman will be.",
+      "shortComment": "Stanley (toe) did not participate in Wednesday's practice.",
+      "status": "Questionable",
+      "date": "2026-09-24T02:38Z",
+      "athlete": {
+        "id": "2980153",
+        "fullName": "Ronnie Stanley",
+        "displayName": "Ronnie Stanley",
+        "shortName": "R. Stanley",
+        "position": {
+          "name": "Offensive Tackle",
+          "abbreviation": "OT",
+          "displayName": "Offensive Tackle"
+        }
+      },
+      "team": {
+        "$ref": "http://sports.core.api.espn.com/v2/sports/football/leagues/nfl/seasons/2026/teams/33?lang=en&region=us"
+      },
+      "source": {
+        "id": "1",
+        "description": "basic/manual",
+        "state": "basic"
+      },
+      "type": {
+        "id": "2",
+        "name": "INJURY_STATUS_QUESTIONABLE",
+        "description": "questionable",
+        "abbreviation": "Q"
+      },
+      "details": {
+        "fantasyStatus": {
+          "description": "QUESTIONABLE",
+          "abbreviation": "QUESTIONABLE"
+        },
+        "type": "Toe",
+        "location": "Leg",
+        "detail": "Not Specified",
+        "side": "Not Specified",
+        "returnDate": "2026-09-27"
+      }
+    },
+    {
+      "$ref": "http://sports.core.api.espn.com/v2/sports/football/leagues/nfl/seasons/2026/athletes/4035245/injuries/638910?lang=en&region=us",
+      "id": "638910",
+      "longComment": "Madubuike has not practiced in full since suffering a significant neck injury in September of 2025. If he's able to participate in full throughout Week 3 prep, the defensive tackle could be cleared to make his season debut against the Cowboys in Rio on Sunday.",
+      "shortComment": "Madubuike (neck) was a full participant in Wednesday's practice.",
+      "status": "Active",
+      "date": "2026-09-24T00:44Z",
+      "athlete": {
+        "id": "4035245",
+        "fullName": "Nnamdi Madubuike",
+        "displayName": "Nnamdi Madubuike",
+        "shortName": "N. Madubuike",
+        "position": {
+          "name": "Defensive Tackle",
+          "abbreviation": "DT",
+          "displayName": "Defensive Tackle"
+        }
+      },
+      "team": {
+        "$ref": "http://sports.core.api.espn.com/v2/sports/football/leagues/nfl/seasons/2026/teams/33?lang=en&region=us"
+      },
+      "source": {
+        "id": "1",
+        "description": "basic/manual",
+        "state": "basic"
+      },
+      "type": {
+        "id": "0",
+        "name": "INJURY_STATUS_ACTIVE",
+        "description": "active",
+        "abbreviation": "A"
+      }
+    },
+    {
+      "$ref": "http://sports.core.api.espn.com/v2/sports/football/leagues/nfl/seasons/2026/athletes/4698244/injuries/638907?lang=en&region=us",
+      "id": "638907",
+      "longComment": "Buchanan was a full participant in practice for the first time since the linebacker suffered an ACL tear last December. With three full practices in Week 3, there is a good chance the training staff will give the 23-year-old the green light to play in Sunday's game against the Cowboys.",
+      "shortComment": "Buchanan (knee) was a full participant in Wednesday's practice.",
+      "status": "Active",
+      "date": "2026-09-24T00:36Z",
+      "athlete": {
+        "id": "4698244",
+        "fullName": "Teddye Buchanan",
+        "displayName": "Teddye Buchanan",
+        "shortName": "T. Buchanan",
+        "position": {
+          "name": "Linebacker",
+          "abbreviation": "LB",
+          "displayName": "Linebacker"
+        }
+      },
+      "team": {
+        "$ref": "http://sports.core.api.espn.com/v2/sports/football/leagues/nfl/seasons/2026/teams/33?lang=en&region=us"
+      },
+      "source": {
+        "id": "1",
+        "description": "basic/manual",
+        "state": "basic"
+      },
+      "type": {
+        "id": "0",
+        "name": "INJURY_STATUS_ACTIVE",
+        "description": "active",
+        "abbreviation": "A"
+      }
+    },
+    {
+      "$ref": "http://sports.core.api.espn.com/v2/sports/football/leagues/nfl/seasons/2026/athletes/4839501/injuries/-2012975?lang=en&region=us",
+      "id": "-2012975",
+      "longComment": "questionable",
+      "shortComment": "questionable",
+      "status": "Questionable",
+      "date": "2026-09-23T20:52Z",
+      "athlete": {
+        "id": "4839501",
+        "fullName": "Zion Young",
+        "displayName": "Zion Young",
+        "shortName": "Z. Young",
+        "position": {
+          "name": "Linebacker",
+          "abbreviation": "LB",
+          "displayName": "Linebacker"
+        }
+      },
+      "team": {
+        "$ref": "http://sports.core.api.espn.com/v2/sports/football/leagues/nfl/seasons/2026/teams/33?lang=en&region=us"
+      },
+      "source": {
+        "id": "1",
+        "description": "basic/manual",
+        "state": "basic"
+      },
+      "type": {
+        "id": "2",
+        "name": "INJURY_STATUS_QUESTIONABLE",
+        "description": "questionable",
+        "abbreviation": "Q"
+      },
+      "details": {
+        "fantasyStatus": {
+          "description": "QUESTIONABLE",
+          "abbreviation": "QUESTIONABLE"
+        },
+        "type": "Quadriceps",
+        "location": "Leg",
+        "detail": "Not Specified",
+        "side": "Not Specified",
+        "returnDate": "2026-09-27"
+      }
+    },
+    {
+      "$ref": "http://sports.core.api.espn.com/v2/sports/football/leagues/nfl/seasons/2026/athletes/4035479/injuries/-2012959?lang=en&region=us",
+      "id": "-2012959",
+      "longComment": "questionable",
+      "shortComment": "questionable",
+      "status": "Questionable",
+      "date": "2026-09-23T20:51Z",
+      "athlete": {
+        "id": "4035479",
+        "fullName": "John Simpson",
+        "displayName": "John Simpson",
+        "shortName": "J. Simpson",
+        "position": {
+          "name": "Guard",
+          "abbreviation": "G",
+          "displayName": "Guard"
+        }
+      },
+      "team": {
+        "$ref": "http://sports.core.api.espn.com/v2/sports/football/leagues/nfl/seasons/2026/teams/33?lang=en&region=us"
+      },
+      "source": {
+        "id": "1",
+        "description": "basic/manual",
+        "state": "basic"
+      },
+      "type": {
+        "id": "2",
+        "name": "INJURY_STATUS_QUESTIONABLE",
+        "description": "questionable",
+        "abbreviation": "Q"
+      },
+      "details": {
+        "fantasyStatus": {
+          "description": "QUESTIONABLE",
+          "abbreviation": "QUESTIONABLE"
+        },
+        "type": "Groin",
+        "location": "Groin",
+        "detail": "Not Specified",
+        "side": "Not Specified",
+        "returnDate": "2026-09-27"
+      }
+    },
+    {
+      "$ref": "http://sports.core.api.espn.com/v2/sports/football/leagues/nfl/seasons/2026/athletes/4685530/injuries/-2012960?lang=en&region=us",
+      "id": "-2012960",
+      "longComment": "questionable",
+      "shortComment": "questionable",
+      "status": "Questionable",
+      "date": "2026-09-23T20:51Z",
+      "athlete": {
+        "id": "4685530",
+        "fullName": "Malaki Starks",
+        "displayName": "Malaki Starks",
+        "shortName": "M. Starks",
+        "position": {
+          "name": "Safety",
+          "abbreviation": "S",
+          "displayName": "Safety"
+        }
+      },
+      "team": {
+        "$ref": "http://sports.core.api.espn.com/v2/sports/football/leagues/nfl/seasons/2026/teams/33?lang=en&region=us"
+      },
+      "source": {
+        "id": "1",
+        "description": "basic/manual",
+        "state": "basic"
+      },
+      "type": {
+        "id": "2",
+        "name": "INJURY_STATUS_QUESTIONABLE",
+        "description": "questionable",
+        "abbreviation": "Q"
+      },
+      "details": {
+        "fantasyStatus": {
+          "description": "QUESTIONABLE",
+          "abbreviation": "QUESTIONABLE"
+        },
+        "type": "Hamstring",
+        "location": "Leg",
+        "detail": "Not Specified",
+        "side": "Not Specified",
+        "returnDate": "2026-09-27"
+      }
+    },
+    {
+      "$ref": "http://sports.core.api.espn.com/v2/sports/football/leagues/nfl/seasons/2026/athletes/3052743/injuries/-2012931?lang=en&region=us",
+      "id": "-2012931",
+      "longComment": "questionable",
+      "shortComment": "questionable",
+      "status": "Questionable",
+      "date": "2026-09-23T20:49Z",
+      "athlete": {
+        "id": "3052743",
+        "fullName": "Trey Hendrickson",
+        "displayName": "Trey Hendrickson",
+        "shortName": "T. Hendrickson",
+        "position": {
+          "name": "Linebacker",
+          "abbreviation": "LB",
+          "displayName": "Linebacker"
+        }
+      },
+      "team": {
+        "$ref": "http://sports.core.api.espn.com/v2/sports/football/leagues/nfl/seasons/2026/teams/33?lang=en&region=us"
+      },
+      "source": {
+        "id": "1",
+        "description": "basic/manual",
+        "state": "basic"
+      },
+      "type": {
+        "id": "2",
+        "name": "INJURY_STATUS_QUESTIONABLE",
+        "description": "questionable",
+        "abbreviation": "Q"
+      },
+      "details": {
+        "fantasyStatus": {
+          "description": "QUESTIONABLE",
+          "abbreviation": "QUESTIONABLE"
+        },
+        "type": "Finger",
+        "location": "Arm",
+        "side": "Not Specified",
+        "returnDate": "2026-09-27"
+      }
+    },
+    {
+      "$ref": "http://sports.core.api.espn.com/v2/sports/football/leagues/nfl/seasons/2026/athletes/4429615/injuries/638813?lang=en&region=us",
+      "id": "638813",
+      "longComment": "On Monday, head coach Jesse Minter said that Flowers had a \"good shot\" at playing in Sunday's game against the Cowboys in Brazil, after the star wideout missed the Ravens' Week 2 loss to the Saints due to the hamstring injury. However, with Flowers opening Week 3 prep as a spectator, his availability to return to action this Sunday now appears to be more uncertain. If Flowers ends up missing a second straight game, Rashod Bateman would be line for another turn as the Ravens' No. 1 receiver.",
+      "shortComment": "Flowers (hamstring) isn't participating in Wednesday's practice, Jamison Hensley of ESPN.com reports.",
+      "status": "Questionable",
+      "date": "2026-09-23T17:24Z",
+      "athlete": {
+        "id": "4429615",
+        "fullName": "Zay Flowers",
+        "displayName": "Zay Flowers",
+        "shortName": "Z. Flowers",
+        "position": {
+          "name": "Wide Receiver",
+          "abbreviation": "WR",
+          "displayName": "Wide Receiver"
+        }
+      },
+      "team": {
+        "$ref": "http://sports.core.api.espn.com/v2/sports/football/leagues/nfl/seasons/2026/teams/33?lang=en&region=us"
+      },
+      "source": {
+        "id": "1",
+        "description": "basic/manual",
+        "state": "basic"
+      },
+      "type": {
+        "id": "2",
+        "name": "INJURY_STATUS_QUESTIONABLE",
+        "description": "questionable",
+        "abbreviation": "Q"
+      },
+      "details": {
+        "fantasyStatus": {
+          "description": "QUESTIONABLE",
+          "abbreviation": "QUESTIONABLE"
+        },
+        "type": "Hamstring",
+        "location": "Leg",
+        "detail": "Not Specified",
+        "side": "Left",
+        "returnDate": "2026-09-27"
+      }
+    },
+    {
+      "$ref": "http://sports.core.api.espn.com/v2/sports/football/leagues/nfl/seasons/2026/athletes/4575517/injuries/638711?lang=en&region=us",
+      "id": "638711",
+      "longComment": "Hamilton played all but one of the Ravens' 68 defensive snaps during Sunday's loss, and he was much more involved in the second half, with 10 of his career-high 13 tackles coming over the final two quarters. It was the eighth time in Hamilton's career that he logged 10-plus combined tackles, the most recent time having been Week 12 of the 2025 season. He's up to 18 combined tackles through two regular-season games and is well on pace to reach 100-plus tackles for a third consecutive year. Hamilton figures to be busy Week 3 against Dak Prescott, CeeDee Lamb and the Cowboys' passing attack.",
+      "shortComment": "Hamilton tallied 13 tackles (seven solo) during the Ravens' 24-17 loss to the Saints on Sunday.",
+      "status": "Active",
+      "date": "2026-09-23T01:00Z",
+      "athlete": {
+        "id": "4575517",
+        "fullName": "Kyle Hamilton",
+        "displayName": "Kyle Hamilton",
+        "shortName": "K. Hamilton",
+        "position": {
+          "name": "Safety",
+          "abbreviation": "S",
+          "displayName": "Safety"
+        }
+      },
+      "team": {
+        "$ref": "http://sports.core.api.espn.com/v2/sports/football/leagues/nfl/seasons/2026/teams/33?lang=en&region=us"
+      },
+      "source": {
+        "id": "1",
+        "description": "basic/manual",
+        "state": "basic"
+      },
+      "type": {
+        "id": "0",
+        "name": "INJURY_STATUS_ACTIVE",
+        "description": "active",
+        "abbreviation": "A"
+      }
+    }
+  ]
+}

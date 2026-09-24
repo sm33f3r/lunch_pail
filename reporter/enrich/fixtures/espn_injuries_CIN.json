@@ -1,0 +1,368 @@
+{
+  "count": 54,
+  "injuries": [
+    {
+      "$ref": "http://sports.core.api.espn.com/v2/sports/football/leagues/nfl/seasons/2026/athletes/3054840/injuries/638895?lang=en&region=us",
+      "id": "638895",
+      "longComment": "It's not immediately clear when Allen picked up the knee injury, but his availability for Week 3 is now in question. He'll probably need to return to practice Thursday or Friday to have a realistic chance of suiting up Sunday at Pittsburgh.",
+      "shortComment": "Allen (knee) did not participate at practice Wednesday.",
+      "status": "Questionable",
+      "date": "2026-09-24T00:13Z",
+      "athlete": {
+        "id": "3054840",
+        "fullName": "Jonathan Allen",
+        "displayName": "Jonathan Allen",
+        "shortName": "J. Allen",
+        "position": {
+          "name": "Defensive Tackle",
+          "abbreviation": "DT",
+          "displayName": "Defensive Tackle"
+        }
+      },
+      "team": {
+        "$ref": "http://sports.core.api.espn.com/v2/sports/football/leagues/nfl/seasons/2026/teams/4?lang=en&region=us"
+      },
+      "source": {
+        "id": "1",
+        "description": "basic/manual",
+        "state": "basic"
+      },
+      "type": {
+        "id": "2",
+        "name": "INJURY_STATUS_QUESTIONABLE",
+        "description": "questionable",
+        "abbreviation": "Q"
+      },
+      "details": {
+        "fantasyStatus": {
+          "description": "QUESTIONABLE",
+          "abbreviation": "QUESTIONABLE"
+        },
+        "type": "Knee",
+        "location": "Leg",
+        "detail": "Not Specified",
+        "side": "Not Specified",
+        "returnDate": "2026-09-27"
+      }
+    },
+    {
+      "$ref": "http://sports.core.api.espn.com/v2/sports/football/leagues/nfl/seasons/2026/athletes/4368003/injuries/638815?lang=en&region=us",
+      "id": "638815",
+      "longComment": "Per Jeremy Fowler of ESPN.com, Iosivas will require surgery to address the injury and is expected to need 4-to-6 weeks to make a full recovery. The Bengals' No. 3 wideout, Iosivas played more than half of the team's offensive snaps in both of the first two games of the season but has totaled just three receptions for 19 yards on four targets.",
+      "shortComment": "Bengals head coach Zac Taylor said Wednesday that Iosivas tore a ligament in his thumb and will be placed on injured reserve, Ben Baby of ESPN.com reports.",
+      "status": "Out",
+      "date": "2026-09-23T17:29Z",
+      "athlete": {
+        "id": "4368003",
+        "fullName": "Andrei Iosivas",
+        "displayName": "Andrei Iosivas",
+        "shortName": "A. Iosivas",
+        "position": {
+          "name": "Wide Receiver",
+          "abbreviation": "WR",
+          "displayName": "Wide Receiver"
+        }
+      },
+      "team": {
+        "$ref": "http://sports.core.api.espn.com/v2/sports/football/leagues/nfl/seasons/2026/teams/4?lang=en&region=us"
+      },
+      "source": {
+        "id": "1",
+        "description": "basic/manual",
+        "state": "basic"
+      },
+      "type": {
+        "id": "4",
+        "name": "INJURY_STATUS_OUT",
+        "description": "out",
+        "abbreviation": "O"
+      },
+      "details": {
+        "fantasyStatus": {
+          "description": "OUT",
+          "abbreviation": "OUT"
+        },
+        "type": "Thumb",
+        "location": "Arm",
+        "detail": "Surgery",
+        "side": "Not Specified",
+        "returnDate": "2026-11-08"
+      }
+    },
+    {
+      "$ref": "http://sports.core.api.espn.com/v2/sports/football/leagues/nfl/seasons/2026/athletes/4427834/injuries/638780?lang=en&region=us",
+      "id": "638780",
+      "longComment": "All logged 25 offensive snaps in Week 2, finishing behind Drew Sample (36) and Mike Gesicki (21). After not garnering any attention from Joe Burrow in the 33-27 win over the Buccaneers in Week 1, the 26-year-old was targeted three times versus the Texans. All finished his rookie 2024 campaign with 20 receptions for 158 yards, but he didn't play in 2025 due to a knee injury. While All should have a weekly presence in the offense as long as he's healthy, he won't carry much fantasy value as long as Gesicki, Ja'Marr Chase, Tee Higgins and Chase Brown are available.",
+      "shortComment": "All notched two receptions (on three targets) for five yards during Sunday's 20-6 win versus the Texans.",
+      "status": "Active",
+      "date": "2026-09-23T03:36Z",
+      "athlete": {
+        "id": "4427834",
+        "fullName": "Erick All Jr.",
+        "displayName": "Erick All Jr.",
+        "shortName": "E. All Jr.",
+        "position": {
+          "name": "Tight End",
+          "abbreviation": "TE",
+          "displayName": "Tight End"
+        }
+      },
+      "team": {
+        "$ref": "http://sports.core.api.espn.com/v2/sports/football/leagues/nfl/seasons/2026/teams/4?lang=en&region=us"
+      },
+      "source": {
+        "id": "1",
+        "description": "basic/manual",
+        "state": "basic"
+      },
+      "type": {
+        "id": "0",
+        "name": "INJURY_STATUS_ACTIVE",
+        "description": "active",
+        "abbreviation": "A"
+      }
+    },
+    {
+      "$ref": "http://sports.core.api.espn.com/v2/sports/football/leagues/nfl/seasons/2026/athletes/3127310/injuries/638778?lang=en&region=us",
+      "id": "638778",
+      "longComment": "Sample logged 36 snaps on offense in the win over Houston, finishing ahead of Erick All (25) and Mike Gesicki (21). However, after catching three passes in the 33-27 victory over the Buccaneers in Week 1, he wasn't targeted in Week 2. The 30-year-old veteran has spent his entire career with the Bengals since entering the NFL in 2019, most recently finishing the 2025 campaign with 15 catches (20 targets) for 106 yards and one touchdown. While Sample could find the end zone at some point this season, he's not expected to play a pivotal role on the receiving end. That likely won't change even if Gesicki or All aren't available, considering Ja'Marr Chase, Tee Higgins and Chase Brown should continue doing most of the heavy lifting on offense.",
+      "shortComment": "Sample notched zero targets during Sunday's 20-6 victory over the Texans.",
+      "status": "Active",
+      "date": "2026-09-23T03:24Z",
+      "athlete": {
+        "id": "3127310",
+        "fullName": "Drew Sample",
+        "displayName": "Drew Sample",
+        "shortName": "D. Sample",
+        "position": {
+          "name": "Tight End",
+          "abbreviation": "TE",
+          "displayName": "Tight End"
+        }
+      },
+      "team": {
+        "$ref": "http://sports.core.api.espn.com/v2/sports/football/leagues/nfl/seasons/2026/teams/4?lang=en&region=us"
+      },
+      "source": {
+        "id": "1",
+        "description": "basic/manual",
+        "state": "basic"
+      },
+      "type": {
+        "id": "0",
+        "name": "INJURY_STATUS_ACTIVE",
+        "description": "active",
+        "abbreviation": "A"
+      }
+    },
+    {
+      "$ref": "http://sports.core.api.espn.com/v2/sports/football/leagues/nfl/seasons/2026/athletes/4431519/injuries/638750?lang=en&region=us",
+      "id": "638750",
+      "longComment": "Carter was able to finish tied for fourth on the team in takedowns with cornerback DJ Turner, and one of the former's tackles was for a loss. The linebacker has played every defensive snap with the Bengals this season, and he figures to be on track for a big year if his workload remains that high.",
+      "shortComment": "Carter registered five total tackles (two solo) during Sunday's 20-6 win over the Texans.",
+      "status": "Active",
+      "date": "2026-09-23T02:13Z",
+      "athlete": {
+        "id": "4431519",
+        "fullName": "Barrett Carter",
+        "displayName": "Barrett Carter",
+        "shortName": "B. Carter",
+        "position": {
+          "name": "Linebacker",
+          "abbreviation": "LB",
+          "displayName": "Linebacker"
+        }
+      },
+      "team": {
+        "$ref": "http://sports.core.api.espn.com/v2/sports/football/leagues/nfl/seasons/2026/teams/4?lang=en&region=us"
+      },
+      "source": {
+        "id": "1",
+        "description": "basic/manual",
+        "state": "basic"
+      },
+      "type": {
+        "id": "0",
+        "name": "INJURY_STATUS_ACTIVE",
+        "description": "active",
+        "abbreviation": "A"
+      }
+    },
+    {
+      "$ref": "http://sports.core.api.espn.com/v2/sports/football/leagues/nfl/seasons/2026/athletes/4430065/injuries/638748?lang=en&region=us",
+      "id": "638748",
+      "longComment": "Johnson was able to get to C.J. Stroud for a pair of sacks in the fourth quarter, and he has already matched his career high with 2.0 sacks this season. The defensive lineman was only on the field for 30 percent of the team's defensive snaps against Houston, and he's unlikely to repeat his performance Week 3 versus the Steelers.",
+      "shortComment": "Johnson recorded four total tackles (three solo), including 2.0 sacks, during Sunday's 20-6 win over Houston.",
+      "status": "Active",
+      "date": "2026-09-23T02:05Z",
+      "athlete": {
+        "id": "4430065",
+        "fullName": "Cedric Johnson",
+        "displayName": "Cedric Johnson",
+        "shortName": "C. Johnson",
+        "position": {
+          "name": "Defensive End",
+          "abbreviation": "DE",
+          "displayName": "Defensive End"
+        }
+      },
+      "team": {
+        "$ref": "http://sports.core.api.espn.com/v2/sports/football/leagues/nfl/seasons/2026/teams/4?lang=en&region=us"
+      },
+      "source": {
+        "id": "1",
+        "description": "basic/manual",
+        "state": "basic"
+      },
+      "type": {
+        "id": "0",
+        "name": "INJURY_STATUS_ACTIVE",
+        "description": "active",
+        "abbreviation": "A"
+      }
+    },
+    {
+      "$ref": "http://sports.core.api.espn.com/v2/sports/football/leagues/nfl/seasons/2026/athletes/4426422/injuries/638745?lang=en&region=us",
+      "id": "638745",
+      "longComment": "Hill was able to have a rather productive day in Week 2, finishing second on the team in takedowns behind linebacker Demetrius Knight (12), while also securing a career-high four passes defensed. The cornerback has now registered 17 total tackles (11 solo) and four passes defensed over two games to open the 2026 campaign.",
+      "shortComment": "Hill recorded 10 total tackles (four solo) and four passes defensed during Sunday's 20-6 win over the Texans.",
+      "status": "Active",
+      "date": "2026-09-23T01:57Z",
+      "athlete": {
+        "id": "4426422",
+        "fullName": "Dax Hill",
+        "displayName": "Dax Hill",
+        "shortName": "D. Hill",
+        "position": {
+          "name": "Cornerback",
+          "abbreviation": "CB",
+          "displayName": "Cornerback"
+        }
+      },
+      "team": {
+        "$ref": "http://sports.core.api.espn.com/v2/sports/football/leagues/nfl/seasons/2026/teams/4?lang=en&region=us"
+      },
+      "source": {
+        "id": "1",
+        "description": "basic/manual",
+        "state": "basic"
+      },
+      "type": {
+        "id": "0",
+        "name": "INJURY_STATUS_ACTIVE",
+        "description": "active",
+        "abbreviation": "A"
+      }
+    },
+    {
+      "$ref": "http://sports.core.api.espn.com/v2/sports/football/leagues/nfl/seasons/2026/athletes/4427729/injuries/638743?lang=en&region=us",
+      "id": "638743",
+      "longComment": "Knight was able to lead the team in takedowns as he continued his hot start to the season versus the Texans. The linebacker has now registered 19 total tackles (nine solo) and a fumble recovery that he returned for a touchdown over two contests to open the 2026 campaign.",
+      "shortComment": "Knight recorded 12 total tackles (four solo) during Sunday's 20-6 win over Houston.",
+      "status": "Active",
+      "date": "2026-09-23T01:53Z",
+      "athlete": {
+        "id": "4427729",
+        "fullName": "Demetrius Knight Jr.",
+        "displayName": "Demetrius Knight Jr.",
+        "shortName": "D. Knight Jr.",
+        "position": {
+          "name": "Linebacker",
+          "abbreviation": "LB",
+          "displayName": "Linebacker"
+        }
+      },
+      "team": {
+        "$ref": "http://sports.core.api.espn.com/v2/sports/football/leagues/nfl/seasons/2026/teams/4?lang=en&region=us"
+      },
+      "source": {
+        "id": "1",
+        "description": "basic/manual",
+        "state": "basic"
+      },
+      "type": {
+        "id": "0",
+        "name": "INJURY_STATUS_ACTIVE",
+        "description": "active",
+        "abbreviation": "A"
+      }
+    },
+    {
+      "$ref": "http://sports.core.api.espn.com/v2/sports/football/leagues/nfl/seasons/2026/athletes/3116748/injuries/-2011803?lang=en&region=us",
+      "id": "-2011803",
+      "longComment": "questionable",
+      "shortComment": "questionable",
+      "status": "Questionable",
+      "date": "2026-09-22T20:56Z",
+      "athlete": {
+        "id": "3116748",
+        "fullName": "B.J. Hill",
+        "displayName": "B.J. Hill",
+        "shortName": "B.J. Hill",
+        "position": {
+          "name": "Defensive Tackle",
+          "abbreviation": "DT",
+          "displayName": "Defensive Tackle"
+        }
+      },
+      "team": {
+        "$ref": "http://sports.core.api.espn.com/v2/sports/football/leagues/nfl/seasons/2026/teams/4?lang=en&region=us"
+      },
+      "source": {
+        "id": "1",
+        "description": "basic/manual",
+        "state": "basic"
+      },
+      "type": {
+        "id": "2",
+        "name": "INJURY_STATUS_QUESTIONABLE",
+        "description": "questionable",
+        "abbreviation": "Q"
+      },
+      "details": {
+        "fantasyStatus": {
+          "description": "QUESTIONABLE",
+          "abbreviation": "QUESTIONABLE"
+        },
+        "type": "Achilles",
+        "location": "Leg",
+        "detail": "Not Specified",
+        "side": "Not Specified",
+        "returnDate": "2026-09-27"
+      }
+    },
+    {
+      "$ref": "http://sports.core.api.espn.com/v2/sports/football/leagues/nfl/seasons/2026/athletes/3116389/injuries/638487?lang=en&region=us",
+      "id": "638487",
+      "longComment": "Perine's three touches were well behind starter Chase Brown's 25, with the former playing 24 of 60 offensive snaps (40.0 percent). Perine's 16-yard catch midway through the third quarter converted a third-and-7 for the Bengals and led to an 18-yard touchdown pass from Joe Burrow to Ja'Marr Chase five plays later. Perine is up to 72 scrimmage yards through two regular-season games and is firmly entrenched as the Bengals' RB2 behind Brown. Up next is a Week 3 AFC North tilt against the Steelers, whose defense gave up 119 yards and a touchdown on 22 carries between TreVeyon Henderson and Rhamondre Stevenson in a Week 2 loss to the Patriots.",
+      "shortComment": "Perine logged two carries for six yards and hauled in his lone target for 16 yards during the Bengals' 20-6 win over the Texans on Sunday.",
+      "status": "Active",
+      "date": "2026-09-21T21:54Z",
+      "athlete": {
+        "id": "3116389",
+        "fullName": "Samaje Perine",
+        "displayName": "Samaje Perine",
+        "shortName": "S. Perine",
+        "position": {
+          "name": "Running Back",
+          "abbreviation": "RB",
+          "displayName": "Running Back"
+        }
+      },
+      "team": {
+        "$ref": "http://sports.core.api.espn.com/v2/sports/football/leagues/nfl/seasons/2026/teams/4?lang=en&region=us"
+      },
+      "source": {
+        "id": "1",
+        "description": "basic/manual",
+        "state": "basic"
+      },
+      "type": {
+        "id": "0",
+        "name": "INJURY_STATUS_ACTIVE",
+        "description": "active",
+        "abbreviation": "A"
+      }
+    }
+  ]
+}

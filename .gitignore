@@ -32,3 +32,7 @@ roadmaps/
 
 # Reports output
 reports/
+
+# Injury recon narrative (fixtures go in reporter/enrich/fixtures/, this doc stays local)
+INJURY_RECON*.md
+reporter/enrich/INJURY_RECON*.md

@@ -1,0 +1,357 @@
+{
+  "count": 57,
+  "injuries": [
+    {
+      "$ref": "http://sports.core.api.espn.com/v2/sports/football/leagues/nfl/seasons/2026/athletes/4715355/injuries/638776?lang=en&region=us",
+      "id": "638776",
+      "longComment": "With Dallas Goedert (knee) going down early in the game, Cooper played 31 offensive snaps as the No. 4 receiver after logging just eight in Week 1 against the Commanders. Cooper responded to the increased playing time by breaking free in the back of the end zone with nine seconds left in the fourth quarter to catch the game-winning three-yard touchdown from Jalen Hurts. Cooper doesn't carry much value in redraft fantasy leagues and would need an injury or two ahead of him at the position for that to change.",
+      "shortComment": "Cooper caught two of three targets for 26 yards and a touchdown in the Eagles' 24-20 win over the Titans on Sunday.",
+      "status": "Active",
+      "date": "2026-09-23T03:16Z",
+      "athlete": {
+        "id": "4715355",
+        "fullName": "Darius Cooper",
+        "displayName": "Darius Cooper",
+        "shortName": "D. Cooper",
+        "position": {
+          "name": "Wide Receiver",
+          "abbreviation": "WR",
+          "displayName": "Wide Receiver"
+        }
+      },
+      "team": {
+        "$ref": "http://sports.core.api.espn.com/v2/sports/football/leagues/nfl/seasons/2026/teams/21?lang=en&region=us"
+      },
+      "source": {
+        "id": "1",
+        "description": "basic/manual",
+        "state": "basic"
+      },
+      "type": {
+        "id": "0",
+        "name": "INJURY_STATUS_ACTIVE",
+        "description": "active",
+        "abbreviation": "A"
+      }
+    },
+    {
+      "$ref": "http://sports.core.api.espn.com/v2/sports/football/leagues/nfl/seasons/2026/athletes/4431545/injuries/638770?lang=en&region=us",
+      "id": "638770",
+      "longComment": "Both Shipley and Tank Bigsby operated in larger roles in the Eagles' backfield after Saquon Barkley left in the first quarter due to a shoulder stinger. During that time that Barkley was off the field, Shipley operated as the clear RB2 behind Bigsby, with his seven carries being his most in a game since 2024. If Barkley is not cleared to play in Week 3, Shipley would split the backfield workload with Bigsby.",
+      "shortComment": "Shipley turned seven carries into 24 yards and caught both of his targets for five yards during the Eagles' 24-20 win over the Titans on Sunday.",
+      "status": "Active",
+      "date": "2026-09-23T02:52Z",
+      "athlete": {
+        "id": "4431545",
+        "fullName": "Will Shipley",
+        "displayName": "Will Shipley",
+        "shortName": "W. Shipley",
+        "position": {
+          "name": "Running Back",
+          "abbreviation": "RB",
+          "displayName": "Running Back"
+        }
+      },
+      "team": {
+        "$ref": "http://sports.core.api.espn.com/v2/sports/football/leagues/nfl/seasons/2026/teams/21?lang=en&region=us"
+      },
+      "source": {
+        "id": "1",
+        "description": "basic/manual",
+        "state": "basic"
+      },
+      "type": {
+        "id": "0",
+        "name": "INJURY_STATUS_ACTIVE",
+        "description": "active",
+        "abbreviation": "A"
+      }
+    },
+    {
+      "$ref": "http://sports.core.api.espn.com/v2/sports/football/leagues/nfl/seasons/2026/athletes/3052096/injuries/638767?lang=en&region=us",
+      "id": "638767",
+      "longComment": "Mundt started along with fellow tight end Dallas Goedert (knee), and he logged 49 of Philadelphia's 76 offensive snaps. The significant playing time was partly due to Goedert exiting in the first half after spraining his MCL. Goedert is now slated to miss multiple weeks due to the injury, but that won't necessarily mean that Mundt will be an attractive fantasy waiver-wire pickup. The Eagles signed veteran Zach Ertz to a contract Tuesday, and he'll likely slide in as the team's top tight end during Goedert's absence, though it's unclear how long Ertz will need to get up to speed.",
+      "shortComment": "Mundt caught two of three targets for eight yards in Sunday's 24-20 win against the Titans.",
+      "status": "Active",
+      "date": "2026-09-23T02:49Z",
+      "athlete": {
+        "id": "3052096",
+        "fullName": "Johnny Mundt",
+        "displayName": "Johnny Mundt",
+        "shortName": "J. Mundt",
+        "position": {
+          "name": "Tight End",
+          "abbreviation": "TE",
+          "displayName": "Tight End"
+        }
+      },
+      "team": {
+        "$ref": "http://sports.core.api.espn.com/v2/sports/football/leagues/nfl/seasons/2026/teams/21?lang=en&region=us"
+      },
+      "source": {
+        "id": "1",
+        "description": "basic/manual",
+        "state": "basic"
+      },
+      "type": {
+        "id": "0",
+        "name": "INJURY_STATUS_ACTIVE",
+        "description": "active",
+        "abbreviation": "A"
+      }
+    },
+    {
+      "$ref": "http://sports.core.api.espn.com/v2/sports/football/leagues/nfl/seasons/2026/athletes/3917657/injuries/638725?lang=en&region=us",
+      "id": "638725",
+      "longComment": "Baun matched his season low in tackles from the 2025 campaign Sunday, but he was still on the field for all 53 of the team's defensive snaps in the contest. He has now compiled 16 total tackles (nine solo) and two passes defensed over two games this season. The linebacker will likely be more involved against the Bears on Monday Night Football in Week 3.",
+      "shortComment": "Baun recorded four total tackles (two solo) during Sunday's 24-20 win over Tennessee.",
+      "status": "Active",
+      "date": "2026-09-23T01:22Z",
+      "athlete": {
+        "id": "3917657",
+        "fullName": "Zack Baun",
+        "displayName": "Zack Baun",
+        "shortName": "Z. Baun",
+        "position": {
+          "name": "Linebacker",
+          "abbreviation": "LB",
+          "displayName": "Linebacker"
+        }
+      },
+      "team": {
+        "$ref": "http://sports.core.api.espn.com/v2/sports/football/leagues/nfl/seasons/2026/teams/21?lang=en&region=us"
+      },
+      "source": {
+        "id": "1",
+        "description": "basic/manual",
+        "state": "basic"
+      },
+      "type": {
+        "id": "0",
+        "name": "INJURY_STATUS_ACTIVE",
+        "description": "active",
+        "abbreviation": "A"
+      }
+    },
+    {
+      "$ref": "http://sports.core.api.espn.com/v2/sports/football/leagues/nfl/seasons/2026/athletes/4685287/injuries/638719?lang=en&region=us",
+      "id": "638719",
+      "longComment": "Campbell was able to notch double-digit takedowns for the first time this season, and he stripped running back Tyjae Spears in the second quarter, but the ball went out of bounds before it could be recovered. The linebacker has now compiled 19 total tackles (11 solo), including 1.0 sacks, and a forced fumble over two games this year.",
+      "shortComment": "Campbell recorded 10 total tackles (six solo) and a forced fumble during Sunday's 24-20 win over the Titans.",
+      "status": "Active",
+      "date": "2026-09-23T01:17Z",
+      "athlete": {
+        "id": "4685287",
+        "fullName": "Jihaad Campbell",
+        "displayName": "Jihaad Campbell",
+        "shortName": "J. Campbell",
+        "position": {
+          "name": "Linebacker",
+          "abbreviation": "LB",
+          "displayName": "Linebacker"
+        }
+      },
+      "team": {
+        "$ref": "http://sports.core.api.espn.com/v2/sports/football/leagues/nfl/seasons/2026/teams/21?lang=en&region=us"
+      },
+      "source": {
+        "id": "1",
+        "description": "basic/manual",
+        "state": "basic"
+      },
+      "type": {
+        "id": "0",
+        "name": "INJURY_STATUS_ACTIVE",
+        "description": "active",
+        "abbreviation": "A"
+      }
+    },
+    {
+      "$ref": "http://sports.core.api.espn.com/v2/sports/football/leagues/nfl/seasons/2026/athletes/3916409/injuries/-2011800?lang=en&region=us",
+      "id": "-2011800",
+      "longComment": "questionable",
+      "shortComment": "questionable",
+      "status": "Questionable",
+      "date": "2026-09-22T20:56Z",
+      "athlete": {
+        "id": "3916409",
+        "fullName": "Jonathan Greenard",
+        "displayName": "Jonathan Greenard",
+        "shortName": "J. Greenard",
+        "position": {
+          "name": "Linebacker",
+          "abbreviation": "LB",
+          "displayName": "Linebacker"
+        }
+      },
+      "team": {
+        "$ref": "http://sports.core.api.espn.com/v2/sports/football/leagues/nfl/seasons/2026/teams/21?lang=en&region=us"
+      },
+      "source": {
+        "id": "1",
+        "description": "basic/manual",
+        "state": "basic"
+      },
+      "type": {
+        "id": "2",
+        "name": "INJURY_STATUS_QUESTIONABLE",
+        "description": "questionable",
+        "abbreviation": "Q"
+      },
+      "details": {
+        "fantasyStatus": {
+          "description": "QUESTIONABLE",
+          "abbreviation": "QUESTIONABLE"
+        },
+        "type": "Pectoral",
+        "location": "Torso",
+        "detail": "Surgery",
+        "side": "Not Specified",
+        "returnDate": "2026-09-28"
+      }
+    },
+    {
+      "$ref": "http://sports.core.api.espn.com/v2/sports/football/leagues/nfl/seasons/2026/athletes/15835/injuries/638627?lang=en&region=us",
+      "id": "638627",
+      "longComment": "Adam Schefter of ESPN reported Monday that the 35-year-old Ertz would sign with the Eagles as a member of the practice squad, and that was confirmed a day later. Ertz, who won his lone Super Bowl ring and earned each of his three Pro Bowl nods as a member of the Eagles from 2013 through 2021, may need some time to get back up to full speed after tearing his ACL last December and then not participating in training camp with a team. Once he's fully ramped up, Ertz could settle in as the Eagles' top tight end with Dallas Goedert (knee) facing a multi-week absence and with Eli Stowers (quadriceps/hamstring) and Grant Calcaterra (back) already on injured reserve.",
+      "shortComment": "Ertz signed with the Eagles' practice squad Tuesday, Chris McPherson of the team's official site reports.",
+      "status": "Active",
+      "date": "2026-09-22T17:21Z",
+      "athlete": {
+        "id": "15835",
+        "fullName": "Zach Ertz",
+        "displayName": "Zach Ertz",
+        "shortName": "Z. Ertz",
+        "position": {
+          "name": "Tight End",
+          "abbreviation": "TE",
+          "displayName": "Tight End"
+        }
+      },
+      "team": {
+        "$ref": "http://sports.core.api.espn.com/v2/sports/football/leagues/nfl/seasons/2026/teams/21?lang=en&region=us"
+      },
+      "source": {
+        "id": "1",
+        "description": "basic/manual",
+        "state": "basic"
+      },
+      "type": {
+        "id": "0",
+        "name": "INJURY_STATUS_ACTIVE",
+        "description": "active",
+        "abbreviation": "A"
+      }
+    },
+    {
+      "$ref": "http://sports.core.api.espn.com/v2/sports/football/leagues/nfl/seasons/2026/athletes/3050478/injuries/638529?lang=en&region=us",
+      "id": "638529",
+      "longComment": "Elliott made the most of his lone field-goal try of the day, making a 58-yarder in the third quarter. The kicker hasn't been leaned on often so far this year, but he has made both of his field-goal tries, and Sunday's 58-yard make is rather inspiring after Elliott combined to make five of 15 attempts from 50-plus yards over the last two seasons.",
+      "shortComment": "Elliott converted his only field-goal attempt and made all three of his PATs in Sunday's 24-20 win over the Titans.",
+      "status": "Active",
+      "date": "2026-09-22T00:00Z",
+      "athlete": {
+        "id": "3050478",
+        "fullName": "Jake Elliott",
+        "displayName": "Jake Elliott",
+        "shortName": "J. Elliott",
+        "position": {
+          "name": "Place kicker",
+          "abbreviation": "PK",
+          "displayName": "Place Kicker"
+        }
+      },
+      "team": {
+        "$ref": "http://sports.core.api.espn.com/v2/sports/football/leagues/nfl/seasons/2026/teams/21?lang=en&region=us"
+      },
+      "source": {
+        "id": "1",
+        "description": "basic/manual",
+        "state": "basic"
+      },
+      "type": {
+        "id": "0",
+        "name": "INJURY_STATUS_ACTIVE",
+        "description": "active",
+        "abbreviation": "A"
+      }
+    },
+    {
+      "$ref": "http://sports.core.api.espn.com/v2/sports/football/leagues/nfl/seasons/2026/athletes/4870795/injuries/638527?lang=en&region=us",
+      "id": "638527",
+      "longComment": "Lemon recorded minus-5 receiving yards on three catches during his NFL debut against the Commanders in Week 1. He was at least able to stay in the positive against Tennessee with a 14-yard catch on the last play of the third quarter, which moved the chains on third-and-8 and led to a two-yard touchdown run by Tank Bigsby four plays later. Lemon saw his workload in training camp severely limited due to a hamstring injury, so it may take a few weeks for the rookie first-rounder to ramp up his production. That said, with Dallas Goedert set to miss multiple weeks due to a sprained MCL, Lemon could operate in an elevated role in the passing game, starting with the Eagles' Week 3 road tilt against the Bears on Monday, Sept. 28.",
+      "shortComment": "Lemon caught his lone target for 14 yards while turning one carry into minus-5 yards during the Eagles' 24-20 win over the Titans on Sunday.",
+      "status": "Active",
+      "date": "2026-09-21T23:57Z",
+      "athlete": {
+        "id": "4870795",
+        "fullName": "Makai Lemon",
+        "displayName": "Makai Lemon",
+        "shortName": "M. Lemon",
+        "position": {
+          "name": "Wide Receiver",
+          "abbreviation": "WR",
+          "displayName": "Wide Receiver"
+        }
+      },
+      "team": {
+        "$ref": "http://sports.core.api.espn.com/v2/sports/football/leagues/nfl/seasons/2026/teams/21?lang=en&region=us"
+      },
+      "source": {
+        "id": "1",
+        "description": "basic/manual",
+        "state": "basic"
+      },
+      "type": {
+        "id": "0",
+        "name": "INJURY_STATUS_ACTIVE",
+        "description": "active",
+        "abbreviation": "A"
+      }
+    },
+    {
+      "$ref": "http://sports.core.api.espn.com/v2/sports/football/leagues/nfl/seasons/2026/athletes/3121023/injuries/638476?lang=en&region=us",
+      "id": "638476",
+      "longComment": "Goedert went down in the second quarter of Sunday's 24-20 win over the Titans with the injury and now appears to be headed for a multi-week absence. While Goedert missed the entire second half of the Week 2 win, Johnny Mundt and E.J. Jenkins handled tight-end duties, but neither saw major involvement in the passing game. During Goedert's upcoming absence, wideouts Dontayvion Wicks and Makai Lemon could be the biggest beneficiaries of added targets behind No. 1 receiver DeVonta Smith.",
+      "shortComment": "Goedert (knee) was diagnosed Monday with a sprained MCL and is expected to miss a few weeks, Ian Rapoport and Adam Schefter of ESPN report.",
+      "status": "Doubtful",
+      "date": "2026-09-21T21:10Z",
+      "athlete": {
+        "id": "3121023",
+        "fullName": "Dallas Goedert",
+        "displayName": "Dallas Goedert",
+        "shortName": "D. Goedert",
+        "position": {
+          "name": "Tight End",
+          "abbreviation": "TE",
+          "displayName": "Tight End"
+        }
+      },
+      "team": {
+        "$ref": "http://sports.core.api.espn.com/v2/sports/football/leagues/nfl/seasons/2026/teams/21?lang=en&region=us"
+      },
+      "source": {
+        "id": "1",
+        "description": "basic/manual",
+        "state": "basic"
+      },
+      "type": {
+        "id": "3",
+        "name": "INJURY_STATUS_DOUBTFUL",
+        "description": "doubtful",
+        "abbreviation": "D"
+      },
+      "details": {
+        "fantasyStatus": {
+          "description": "DOUBTFUL",
+          "abbreviation": "DOUBTFUL"
+        },
+        "type": "Knee - MCL",
+        "location": "Leg",
+        "detail": "Sprain",
+        "side": "Right",
+        "returnDate": "2026-09-28"
+      }
+    }
+  ]
+}
