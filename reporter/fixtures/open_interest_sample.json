@@ -1,0 +1,35 @@
+{
+  "discovery_note": "GET /oi returns platform-wide global OI only; ignores all query params. Per-market OI comes from GET /live-volume?id=<event_id>",
+  "global_oi_endpoint": "https://data-api.polymarket.com/oi",
+  "global_oi_response": [
+    {
+      "market": "GLOBAL",
+      "value": 338436098.59004813
+    }
+  ],
+  "per_market_oi_endpoint": "https://data-api.polymarket.com/live-volume",
+  "per_market_oi_param": "id=<event_id>",
+  "per_market_oi_response": [
+    {
+      "total": 9695.882926,
+      "markets": [
+        {
+          "market": "0x3ce1a8eb83552ffab3794a33b4ab7d7da750a9cd2246da324b37c5e5b0478575",
+          "value": 8660.386699
+        },
+        {
+          "market": "0xb9cd01a80b296574dd0120b698c6e9a6f22c05bb7cb32c93ba03f92a5b76e9c8",
+          "value": 984
+        },
+        {
+          "market": "0x4ef00d18043db1e5a54521dbf34e08b1db0cfbe4b5ff2bb83c0a2aa22ead417c",
+          "value": 42.396227
+        },
+        {
+          "market": "0x533ebdda80928a85bd45cd972e7c130a8311f1f3a272b43edeedbec89d631b7f",
+          "value": 9.1
+        }
+      ]
+    }
+  ]
+}

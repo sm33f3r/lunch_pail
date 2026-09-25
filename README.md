@@ -6,7 +6,7 @@ Lunch Pail ingests, validates and stores eleven seasons of NFL data in PostgreSQ
 
 Everything runs on free, public data sources. No paid subscriptions required.
 
-> **Status:** The historical data layer is complete and validated. The market reporting pipeline is in active development as of September 22, 2026. What you're reading now is based on the build as it was on that date. Hopefully we will remember to update this README.md frequently enough so that it reflects ongoing changes made in the repository in the future. Cheers.
+> **Status:** The historical data layer is complete and validated. The market reporting pipeline is in active development as of September 25, 2026. What you're reading now is based on the build as it was on that date. Happy Chuseok. Hopefully we will remember to update this README.md frequently enough so that it reflects ongoing changes made in the repository in the future.
 
 ---
 
@@ -166,8 +166,8 @@ Documented honestly, because they affect what you can do with the data:
 | | Status |
 |---|---|
 | Historical data infrastructure (2014–2024) | ✅ Complete, validated |
-| Polymarket market detection and reporting | 🔨 In development |
-| Game data enrichment — team form, injuries, weather | ⏳ Planned |
+| Polymarket market detection and reporting | ✅ Complete, validated |
+| Game data enrichment — team form, injuries, weather | 🔨 In development |
 | Scheduled automated runs | ⏳ Planned |
 | XGBoost prediction engine | ⏸ Deferred indefinitely |
 
