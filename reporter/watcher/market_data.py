@@ -19,6 +19,7 @@ from reporter.config import settings
 
 _PRICE_SUM_TOLERANCE = 0.02
 _RETRY_DELAYS = (1, 3)  # seconds between retries; two attempts after first failure
+_RATE_LIMIT_DELAY = 10  # seconds; replaces the _RETRY_DELAYS entry when the failure was a 429
 
 
 class PriceDataError(ValueError):
@@ -96,13 +97,18 @@ def extract_prices(market: dict) -> dict[str, float]:
 # ---------------------------------------------------------------------------
 
 def _get_with_retry(url: str, params: dict, timeout: int = 10) -> requests.Response:
-    """GET with simple retry-on-non-200 using backoff delays."""
+    """
+    GET with simple retry-on-non-200 using backoff delays.
+
+    A 429 (rate-limited) response waits _RATE_LIMIT_DELAY before the next
+    attempt instead of the short generic delay. Attempt count is unchanged.
+    """
     for attempt, delay in enumerate((*_RETRY_DELAYS, None)):
         response = requests.get(url, params=params, timeout=timeout)
         if response.status_code == 200:
             return response
         if delay is not None:
-            time.sleep(delay)
+            time.sleep(_RATE_LIMIT_DELAY if response.status_code == 429 else delay)
     response.raise_for_status()
     return response  # unreachable, but satisfies type checker
 
@@ -122,9 +128,10 @@ def fetch_open_interest(condition_id: str) -> float:
         Open interest as a float.
 
     Raises:
-        OpenInterestError: if the response market field is "GLOBAL" —
-            meaning the conditionId wasn't recognised and the endpoint
-            returned the platform-wide aggregate instead of this market's OI.
+        OpenInterestError: if the response is empty, not a list, or its
+            market field is "GLOBAL" — meaning the conditionId wasn't
+            recognised and the endpoint returned the platform-wide aggregate
+            instead of this market's OI.
         requests.HTTPError: on persistent HTTP failures.
     """
     base = settings.data_api_base_url.rstrip("/")
@@ -133,6 +140,9 @@ def fetch_open_interest(condition_id: str) -> float:
     data = response.json()
 
     # Response is a list: [{"market": "<conditionId>|GLOBAL", "value": <float>}]
+    # An empty list is treated as an error, never as zero OI: it has not been
+    # verified live that [] unambiguously means "market exists, OI is zero"
+    # (see reporter/fixtures/recon_scripts/06_oi_empty_response.py).
     if not isinstance(data, list) or not data:
         raise OpenInterestError(
             f"Unexpected /oi response shape for conditionId={condition_id!r}: {data!r}"
