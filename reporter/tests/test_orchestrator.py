@@ -14,44 +14,104 @@ os.environ.setdefault("VOLUME_WINDOW", "24hr")
 os.environ.setdefault("REPORT_OUTPUT_DIR", "/tmp/reporter_test")
 os.environ.setdefault("POLLING_INTERVAL_SECONDS", "300")
 
+from reporter.enrich.injury_adapter import InjuryResult  # noqa: E402
 from reporter.orchestrator import run_forever, run_once  # noqa: E402
+
+
+def _game(away_abbr="KC", home_abbr="MIA"):
+    return {"away_abbr": away_abbr, "home_abbr": home_abbr}
+
+
+_OK_RESULT = InjuryResult(records=[], source="espn", status="no_designations")
 
 
 class TestRunOnce:
     def test_calls_write_all_reports(self):
-        with patch("reporter.orchestrator.write_all_reports", return_value=[]) as mock_write:
+        with patch("reporter.orchestrator.get_reportable_games", return_value=[]), \
+             patch("reporter.orchestrator.write_all_reports", return_value=[]) as mock_write:
             run_once()
         mock_write.assert_called_once()
 
     def test_returns_none(self):
-        with patch("reporter.orchestrator.write_all_reports", return_value=[]):
+        with patch("reporter.orchestrator.get_reportable_games", return_value=[]), \
+             patch("reporter.orchestrator.write_all_reports", return_value=[]):
             result = run_once()
         assert result is None
 
     def test_exception_does_not_propagate(self):
         # A transient error in write_all_reports must not crash run_once.
-        with patch("reporter.orchestrator.write_all_reports", side_effect=RuntimeError("API timeout")):
+        with patch("reporter.orchestrator.get_reportable_games", return_value=[]), \
+             patch("reporter.orchestrator.write_all_reports", side_effect=RuntimeError("API timeout")):
             run_once()  # must not raise
 
     def test_exception_from_connection_error_does_not_propagate(self):
         import requests
-        with patch("reporter.orchestrator.write_all_reports", side_effect=requests.ConnectionError("network down")):
+        with patch("reporter.orchestrator.get_reportable_games", return_value=[]), \
+             patch("reporter.orchestrator.write_all_reports", side_effect=requests.ConnectionError("network down")):
             run_once()  # must not raise
 
     def test_prints_summary_with_games(self, capsys):
         from pathlib import Path
         paths = [Path("/tmp/2026-09-28_KC_at_MIA.md"), Path("/tmp/2026-09-28_PHI_at_NYG.md")]
-        with patch("reporter.orchestrator.write_all_reports", return_value=paths):
+        with patch("reporter.orchestrator.get_reportable_games", return_value=[]), \
+             patch("reporter.orchestrator.write_all_reports", return_value=paths):
             run_once()
         out = capsys.readouterr().out
         assert "2" in out
         assert "KC_at_MIA" in out
 
     def test_prints_zero_games_message(self, capsys):
-        with patch("reporter.orchestrator.write_all_reports", return_value=[]):
+        with patch("reporter.orchestrator.get_reportable_games", return_value=[]), \
+             patch("reporter.orchestrator.write_all_reports", return_value=[]):
             run_once()
         out = capsys.readouterr().out
         assert "0" in out
+
+    # ------------------------------------------------------------------
+    # Injury-fetch wiring (Phase 4 Step 3 closeout)
+    # ------------------------------------------------------------------
+
+    def test_fetches_injuries_for_both_teams_of_every_game(self):
+        games = [_game("KC", "MIA"), _game("PHI", "NYG")]
+        with patch("reporter.orchestrator.get_reportable_games", return_value=games), \
+             patch("reporter.orchestrator.get_team_injuries", return_value=_OK_RESULT) as mock_fetch, \
+             patch("reporter.orchestrator.write_all_reports", return_value=[]):
+            run_once()
+        mock_fetch.assert_has_calls(
+            [call("KC"), call("MIA"), call("PHI"), call("NYG")], any_order=True
+        )
+        assert mock_fetch.call_count == 4
+
+    def test_injuries_attached_to_games_passed_to_write_all_reports(self):
+        games = [_game("KC", "MIA")]
+        with patch("reporter.orchestrator.get_reportable_games", return_value=games), \
+             patch("reporter.orchestrator.get_team_injuries", return_value=_OK_RESULT), \
+             patch("reporter.orchestrator.write_all_reports", return_value=[]) as mock_write:
+            run_once()
+        written_games = mock_write.call_args[0][0]
+        assert written_games[0]["away_injuries"] is _OK_RESULT
+        assert written_games[0]["home_injuries"] is _OK_RESULT
+
+    def test_one_team_injury_failure_does_not_abort_game_report(self):
+        games = [_game("KC", "MIA")]
+
+        def flaky(abbr):
+            if abbr == "MIA":
+                raise RuntimeError("ESPN and nflverse both down")
+            return _OK_RESULT
+
+        with patch("reporter.orchestrator.get_reportable_games", return_value=games), \
+             patch("reporter.orchestrator.get_team_injuries", side_effect=flaky), \
+             patch("reporter.orchestrator.write_all_reports", return_value=[]) as mock_write:
+            run_once()  # must not raise
+
+        written_games = mock_write.call_args[0][0]
+        assert written_games[0]["away_injuries"] is _OK_RESULT
+        assert written_games[0]["home_injuries"].status == "unavailable"
+
+    def test_game_assembly_failure_does_not_crash_run_once(self):
+        with patch("reporter.orchestrator.get_reportable_games", side_effect=RuntimeError("assembly down")):
+            run_once()  # must not raise
 
 
 class TestRunForever:

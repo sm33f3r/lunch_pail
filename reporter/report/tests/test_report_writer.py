@@ -17,6 +17,7 @@ os.environ.setdefault("VOLUME_WINDOW", "24hr")
 os.environ.setdefault("REPORT_OUTPUT_DIR", "/tmp/reporter_test")
 os.environ.setdefault("POLLING_INTERVAL_SECONDS", "300")
 
+from reporter.enrich.injury_adapter import InjuryRecord, InjuryResult  # noqa: E402
 from reporter.report.report_writer import (  # noqa: E402
     format_game_report,
     write_all_reports,
@@ -27,6 +28,23 @@ from reporter.report.report_writer import (  # noqa: E402
 # ---------------------------------------------------------------------------
 # Fixture builders
 # ---------------------------------------------------------------------------
+
+def _ok_injury_result(source="espn") -> InjuryResult:
+    rec = InjuryRecord(
+        player_name="Test Player",
+        position="WR",
+        designation="Questionable",
+        practice_status="unavailable (ESPN source — no structured practice status)" if source == "espn" else "Limited Participation in Practice",
+        injury_type="Ankle",
+        source=source,
+        updated_at="2026-09-24T07:01Z" if source == "espn" else None,
+        short_comment="Test Player (ankle) did not participate in Wednesday's practice." if source == "espn" else None,
+        location="Leg" if source == "espn" else None,
+        side=None,
+        return_date="2026-09-27" if source == "espn" else None,
+    )
+    return InjuryResult(records=[rec], source=source, status="ok")
+
 
 def _sample_game(
     game_id=101,
@@ -39,6 +57,8 @@ def _sample_game(
     moneyline=None,
     spreads=None,
     totals=None,
+    away_injuries=None,
+    home_injuries=None,
 ) -> dict:
     if moneyline is None:
         moneyline = {
@@ -53,6 +73,10 @@ def _sample_game(
         spreads = [{"prices": {"Away": 0.48, "Home": 0.52}, "line": "-3.5"}]
     if totals is None:
         totals = [{"prices": {"Over": 0.51, "Under": 0.49}, "line": "44.5"}]
+    if away_injuries is None:
+        away_injuries = _ok_injury_result("espn")
+    if home_injuries is None:
+        home_injuries = _ok_injury_result("espn")
     return {
         "game_id":   game_id,
         "away_team": away_team,
@@ -60,6 +84,8 @@ def _sample_game(
         "away_abbr": away_abbr,
         "home_abbr": home_abbr,
         "game_date": game_date,
+        "away_injuries": away_injuries,
+        "home_injuries": home_injuries,
         "event_slug": f"nfl-{away_abbr.lower()}-{home_abbr.lower()}-{game_date}",
         "event_url":  f"https://polymarket.com/event/nfl-{away_abbr.lower()}-{home_abbr.lower()}-{game_date}",
         "volume":     volume,
@@ -88,27 +114,93 @@ class TestFormatGameReport:
         report = format_game_report(_GAME)
         assert "2026-09-27" in report
 
-    def test_injury_disclaimer_present(self):
+    def test_injury_report_section_present(self):
         report = format_game_report(_GAME)
-        assert "INJURY GATE NOT CLEARED" in report
+        assert "## Injury Report" in report
 
-    def test_injury_disclaimer_near_top(self):
+    def test_injury_report_near_top(self):
         report = format_game_report(_GAME)
         header_pos = report.index("# Baltimore Ravens")
-        disclaimer_pos = report.index("INJURY GATE NOT CLEARED")
-        # Disclaimer must appear within the first 600 characters after the header
-        assert disclaimer_pos - header_pos < 600, (
-            "Injury disclaimer is too far from the top of the report"
+        injury_pos = report.index("## Injury Report")
+        # Injury report must appear within the first 600 characters after the header
+        assert injury_pos - header_pos < 600, (
+            "Injury report section is too far from the top of the report"
         )
 
-    def test_injury_disclaimer_non_empty(self):
+    def test_injury_report_both_teams_present(self):
         report = format_game_report(_GAME)
-        # Extract the disclaimer block (between first "> ### ⚠" and next non-"> " line)
-        disclaimer_lines = [
-            line for line in report.splitlines()
-            if line.startswith(">")
-        ]
-        assert len(disclaimer_lines) >= 3, "Disclaimer block should have at least 3 lines"
+        assert "### Baltimore Ravens (BAL)" in report
+        assert "### Dallas Cowboys (DAL)" in report
+
+    def test_injury_report_player_designation_present(self):
+        report = format_game_report(_GAME)
+        assert "Test Player" in report
+        assert "Questionable" in report
+
+    def test_injury_report_source_tagged_per_team(self):
+        report = format_game_report(_GAME)
+        assert report.count("**Source:** espn") == 2
+
+    def test_injury_report_espn_practice_status_note_present(self):
+        report = format_game_report(_GAME)
+        assert report.count("Practice status is not available from this source") == 2
+
+    def test_injury_report_espn_no_practice_status_per_player(self):
+        report = format_game_report(_GAME)
+        assert "Practice status:" not in report
+
+    def test_injury_report_nflverse_practice_status_per_player(self):
+        game = _sample_game(
+            away_injuries=_ok_injury_result("nflverse"),
+            home_injuries=_ok_injury_result("nflverse"),
+        )
+        report = format_game_report(game)
+        assert "Practice status: Limited Participation in Practice" in report
+
+    def test_injury_report_no_designations_shows_no_injuries_line(self):
+        game = _sample_game(
+            away_injuries=InjuryResult(records=[], source="espn", status="no_designations"),
+        )
+        report = format_game_report(game)
+        assert "No injuries reported." in report
+
+    def test_injury_report_unavailable_shows_marker(self):
+        game = _sample_game(
+            away_injuries=InjuryResult(records=[], source="unavailable", status="unavailable"),
+        )
+        report = format_game_report(game)
+        assert "UNAVAILABLE" in report
+
+    def test_injury_report_shortcomment_skipped_when_bare_repeat(self):
+        rec = InjuryRecord(
+            player_name="Bare Repeat",
+            position="WR",
+            designation="Questionable",
+            practice_status="unavailable (ESPN source -- no structured practice status)",
+            injury_type="Ankle",
+            source="espn",
+            updated_at=None,
+            short_comment="questionable",
+        )
+        game = _sample_game(away_injuries=InjuryResult(records=[rec], source="espn", status="ok"))
+        report = format_game_report(game)
+        # The bare "questionable" shortComment must not be rendered as a sub-bullet.
+        assert "  - questionable" not in report
+
+    def test_injury_report_shortcomment_included_when_informative(self):
+        rec = InjuryRecord(
+            player_name="Informative Case",
+            position="WR",
+            designation="Questionable",
+            practice_status="unavailable (ESPN source -- no structured practice status)",
+            injury_type="Hamstring",
+            source="espn",
+            updated_at=None,
+            short_comment="did not participate in Wednesday's practice",
+        )
+        game = _sample_game(away_injuries=InjuryResult(records=[rec], source="espn", status="ok"))
+        report = format_game_report(game)
+        assert "did not participate in Wednesday's practice" in report
 
     def test_moneyline_section_present(self):
         report = format_game_report(_GAME)
@@ -225,7 +317,7 @@ class TestWriteGameReport:
     def test_file_content_is_report(self, tmp_path):
         path = write_game_report(_GAME, tmp_path)
         content = path.read_text(encoding="utf-8")
-        assert "INJURY GATE NOT CLEARED" in content
+        assert "## Injury Report" in content
         assert "## Moneyline" in content
 
     def test_creates_output_dir_if_missing(self, tmp_path):
@@ -428,9 +520,12 @@ class TestLineLabelAndFiltering:
         report = format_game_report(_GAME)
         assert "⚠" not in report, "Warning symbol found; use ASCII 'WARNING:' instead"
 
-    def test_injury_disclaimer_uses_ascii_warning(self):
-        report = format_game_report(_GAME)
-        assert "WARNING: INJURY GATE NOT CLEARED" in report
+    def test_injury_report_unavailable_uses_ascii_marker(self):
+        game = _sample_game(
+            away_injuries=InjuryResult(records=[], source="unavailable", status="unavailable"),
+        )
+        report = format_game_report(game)
+        assert "**UNAVAILABLE**" in report
 
     def test_phase4_header_uses_ascii_dash(self):
         report = format_game_report(_GAME)

@@ -108,6 +108,10 @@ class InjuryRecord:
     injury_type:     str | None   # body part ("Ankle", "Knee", …); None if not reported
     source:          str          # "espn" | "nflverse"
     updated_at:      str | None   # ISO 8601 from ESPN; None for nflverse
+    short_comment:   str | None = None   # ESPN details.shortComment; None for nflverse
+    location:        str | None = None   # ESPN details.location; None for nflverse
+    side:            str | None = None   # ESPN details.side; None if "Not Specified" or nflverse
+    return_date:     str | None = None   # ESPN details.returnDate; None for nflverse
 
 
 @dataclass(frozen=True)
@@ -248,6 +252,9 @@ def _parse_espn_record(raw: dict) -> InjuryRecord | None:
         return None
     position_obj = athlete.get("position") or {}
     details = raw.get("details") or {}
+    side = details.get("side") or None
+    if side == "Not Specified":
+        side = None
     return InjuryRecord(
         player_name=athlete.get("fullName", ""),
         position=position_obj.get("abbreviation", ""),
@@ -256,6 +263,10 @@ def _parse_espn_record(raw: dict) -> InjuryRecord | None:
         injury_type=details.get("type") or None,
         source="espn",
         updated_at=raw.get("date") or None,
+        short_comment=raw.get("shortComment") or None,
+        location=details.get("location") or None,
+        side=side,
+        return_date=details.get("returnDate") or None,
     )
 
 
