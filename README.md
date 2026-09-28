@@ -7,7 +7,7 @@ Lunch Pail ingests, validates and stores eleven seasons of NFL data in PostgreSQ
 Everything runs on free, public data sources. No paid subscriptions required.
 
 > **Status:** The historical data layer is complete and validated. The market reporting pipeline is in active development as of September 25, 2026. What you're reading now is based on the build as it was on that date. Happy Chuseok. Hopefully we will remember to update this README.md frequently enough so that it reflects ongoing changes made in the repository in the future.
-
+<img src="assets/lunch_pail_profile.png" align="right" width="570">
 ---
 
 ## What this is for
