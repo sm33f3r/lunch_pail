@@ -89,8 +89,13 @@ def _moneyline_section(moneyline: dict) -> str:
         lines.append(f"| {outcome} | {price:.3f} | {implied_pct:.1f}% |")
     lines.append("")
 
-    oi = moneyline.get("open_interest", 0.0)
-    lines.append(f"**Open Interest:** ${oi:,.2f}\n")
+    oi_status = moneyline.get("open_interest_status", "ok")
+    oi = moneyline.get("open_interest")
+    if oi_status == "unavailable" or oi is None:
+        reason = moneyline.get("open_interest_reason") or "no data returned"
+        lines.append(f"**Open Interest:** UNAVAILABLE -- {reason}\n")
+    else:
+        lines.append(f"**Open Interest:** ${oi:,.2f}\n")
 
     trades = moneyline.get("recent_trades") or []
     if trades:

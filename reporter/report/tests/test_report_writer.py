@@ -294,6 +294,23 @@ class TestFormatGameReport:
         report = format_game_report(_GAME)
         assert "12,345.67" in report
 
+    def test_moneyline_open_interest_unavailable_shows_marker(self):
+        game = _sample_game()
+        game["moneyline"]["open_interest_status"] = "unavailable"
+        game["moneyline"]["open_interest_reason"] = "Unexpected /oi response shape for conditionId='0xabc': []"
+        game["moneyline"]["open_interest"] = None
+        report = format_game_report(game)
+        assert "**Open Interest:** UNAVAILABLE -- Unexpected /oi response shape" in report
+        assert "$0.00" not in report
+
+    def test_moneyline_open_interest_missing_key_shows_marker_not_zero(self):
+        # No open_interest key at all (e.g. an older caller) must never render $0.00.
+        game = _sample_game()
+        del game["moneyline"]["open_interest"]
+        report = format_game_report(game)
+        assert "**Open Interest:** UNAVAILABLE" in report
+        assert "$0.00" not in report
+
     def test_moneyline_recent_trades(self):
         report = format_game_report(_GAME)
         assert "BUY" in report
@@ -430,6 +447,38 @@ class TestWriteAllReports:
             written = write_all_reports()
         assert len(written) == 2
         assert all(p.exists() for p in written)
+
+    def test_one_games_oi_failure_does_not_block_other_reports(self, tmp_path):
+        # Reproduces the DEN @ SF production incident: one game's moneyline
+        # has open_interest_status="unavailable" (empty /oi response) while
+        # the rest of the slate is healthy. The whole cycle must still write
+        # a report for every game.
+        ok_game = _sample_game(game_id=1, away_abbr="KC", home_abbr="MIA", game_date="2026-09-28")
+        degraded_game = _sample_game(game_id=2, away_abbr="DEN", home_abbr="SF", game_date="2026-09-28")
+        degraded_game["moneyline"]["open_interest"] = None
+        degraded_game["moneyline"]["open_interest_status"] = "unavailable"
+        degraded_game["moneyline"]["open_interest_reason"] = (
+            "Unexpected /oi response shape for conditionId='0xdensf': []"
+        )
+        games = [ok_game, degraded_game]
+
+        with patch("reporter.report.report_writer.get_reportable_games", return_value=games), \
+             patch("reporter.report.report_writer.settings") as mock_settings:
+            mock_settings.report_output_dir = tmp_path
+            written = write_all_reports()
+
+        assert len(written) == 2
+        assert all(p.exists() for p in written)
+
+        den_sf_path = next(p for p in written if "DEN_at_SF" in p.name)
+        kc_mia_path = next(p for p in written if "KC_at_MIA" in p.name)
+
+        den_sf_content = den_sf_path.read_text(encoding="utf-8")
+        kc_mia_content = kc_mia_path.read_text(encoding="utf-8")
+
+        assert "**Open Interest:** UNAVAILABLE" in den_sf_content
+        assert "$0.00" not in den_sf_content
+        assert "**Open Interest:** $12,345.67" in kc_mia_content
 
     def test_returns_list_of_paths(self, tmp_path):
         games = [_GAME]

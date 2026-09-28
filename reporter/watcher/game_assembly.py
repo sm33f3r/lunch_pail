@@ -15,7 +15,15 @@ from __future__ import annotations
 
 import re
 
-from reporter.watcher.market_data import PriceDataError, extract_market_data, extract_prices
+import requests
+
+from reporter.watcher.market_data import (
+    OpenInterestError,
+    PriceDataError,
+    extract_market_data,
+    extract_prices,
+    fetch_recent_trades,
+)
 from reporter.watcher.market_grouping import group_markets_for_event
 from reporter.watcher.nfl_events import get_current_nfl_games
 from reporter.watcher.team_mapping import parse_teams_from_event
@@ -118,14 +126,40 @@ def build_game_report_data(
     event_url  = _POLYMARKET_EVENT_URL.format(slug=slug)
 
     # Bad moneyline prices = skip the whole game (no usable primary signal).
+    # A moneyline OI fetch failure is NOT the same kind of problem: prices
+    # and trades are still usable, so the game still gets a report with OI
+    # marked unavailable rather than the whole cycle aborting on one bad
+    # /oi response (see reporter.watcher.market_data.OpenInterestError).
     moneyline_data = None
     if grouped["moneyline"]:
+        market = grouped["moneyline"]
+        mid = market.get("id", "?")
         try:
-            moneyline_data = extract_market_data(grouped["moneyline"])
+            moneyline_data = extract_market_data(market)
+            moneyline_data["open_interest_status"] = "ok"
+            moneyline_data["open_interest_reason"] = None
         except PriceDataError as exc:
-            mid = grouped["moneyline"].get("id", "?")
-            print(f"  [WARN] game_id={game_id}: moneyline market {mid!r} bad price data — skipping game. {exc}")
+            print(f"  [WARN] game_id={game_id}: moneyline market {mid!r} bad price data -- skipping game. {exc}", flush=True)
             return None
+        except (OpenInterestError, requests.RequestException) as exc:
+            try:
+                prices = extract_prices(market)
+            except PriceDataError as price_exc:
+                print(f"  [WARN] game_id={game_id}: moneyline market {mid!r} bad price data -- skipping game. {price_exc}", flush=True)
+                return None
+            try:
+                recent_trades = fetch_recent_trades(market.get("conditionId", ""))
+            except Exception as trade_exc:
+                print(f"  [WARN] game_id={game_id}: moneyline market {mid!r} trades fetch also failed after OI failure -- {trade_exc}", flush=True)
+                recent_trades = []
+            print(f"  [WARN] game_id={game_id}: moneyline market {mid!r} open interest unavailable -- {exc}", flush=True)
+            moneyline_data = {
+                "prices": prices,
+                "open_interest": None,
+                "open_interest_status": "unavailable",
+                "open_interest_reason": str(exc),
+                "recent_trades": recent_trades,
+            }
 
     # Spreads and totals are secondary; only prices are needed (pure, no network).
     # Each entry also carries the line label parsed from groupItemTitle.

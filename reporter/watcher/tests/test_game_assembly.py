@@ -354,9 +354,11 @@ class TestMarketDataFetchingScope:
             mock_emd.return_value = ml_data
             result = build_game_report_data(500, [_FULL_MARKETS_EVENT])
         assert result is not None
-        assert result["moneyline"] == ml_data
+        assert result["moneyline"]["prices"] == {"Away": 0.6, "Home": 0.4}
         assert result["moneyline"]["open_interest"] == 500.0
         assert result["moneyline"]["recent_trades"] == [{"side": "BUY"}]
+        assert result["moneyline"]["open_interest_status"] == "ok"
+        assert result["moneyline"]["open_interest_reason"] is None
 
 
 # ---------------------------------------------------------------------------
@@ -463,3 +465,125 @@ class TestPriceDataErrorTolerance:
             mock_emd.side_effect = PriceDataError("prices sum to 0.20")
             build_game_report_data(700, [_BAD_ML_EVENT], _skip_log=skip_log)
         assert skip_log == []
+
+
+# ---------------------------------------------------------------------------
+# OpenInterestError tolerance: OI failure degrades the game, never aborts it
+# ---------------------------------------------------------------------------
+
+# Game 800: moneyline with good prices, e.g. a brand-new market whose /oi
+# endpoint returns an empty list (reproduces the DEN @ SF production incident).
+_OI_FAIL_EVENT = _game_event(
+    game_id=800,
+    slug="nfl-den-sf-2026-09-28",
+    title="Broncos vs. 49ers",
+    volume_24hr=1051.0 + 5000.0,  # comfortably above threshold
+    markets=[_moneyline_market(market_id="ml8", condition_id="0xml8")],
+)
+
+
+class TestOpenInterestErrorTolerance:
+    def test_oi_failure_does_not_abort_game(self):
+        from reporter.watcher.market_data import OpenInterestError
+        with patch("reporter.watcher.game_assembly.extract_market_data") as mock_emd, \
+             patch("reporter.watcher.game_assembly.fetch_recent_trades", return_value=[]):
+            mock_emd.side_effect = OpenInterestError(
+                "Unexpected /oi response shape for conditionId='0xml8': []"
+            )
+            result = build_game_report_data(800, [_OI_FAIL_EVENT])
+        assert result is not None, "An OI fetch failure must not abort the game's report"
+
+    def test_oi_failure_prices_still_present(self):
+        from reporter.watcher.market_data import OpenInterestError
+        with patch("reporter.watcher.game_assembly.extract_market_data") as mock_emd, \
+             patch("reporter.watcher.game_assembly.fetch_recent_trades", return_value=[]):
+            mock_emd.side_effect = OpenInterestError("empty /oi response")
+            result = build_game_report_data(800, [_OI_FAIL_EVENT])
+        assert result["moneyline"]["prices"] == pytest.approx({"Away": 0.5, "Home": 0.5})
+
+    def test_oi_failure_open_interest_is_none_not_zero(self):
+        from reporter.watcher.market_data import OpenInterestError
+        with patch("reporter.watcher.game_assembly.extract_market_data") as mock_emd, \
+             patch("reporter.watcher.game_assembly.fetch_recent_trades", return_value=[]):
+            mock_emd.side_effect = OpenInterestError("empty /oi response")
+            result = build_game_report_data(800, [_OI_FAIL_EVENT])
+        assert result["moneyline"]["open_interest"] is None
+
+    def test_oi_failure_status_and_reason_set(self):
+        from reporter.watcher.market_data import OpenInterestError
+        with patch("reporter.watcher.game_assembly.extract_market_data") as mock_emd, \
+             patch("reporter.watcher.game_assembly.fetch_recent_trades", return_value=[]):
+            mock_emd.side_effect = OpenInterestError("empty /oi response")
+            result = build_game_report_data(800, [_OI_FAIL_EVENT])
+        assert result["moneyline"]["open_interest_status"] == "unavailable"
+        assert "empty /oi response" in result["moneyline"]["open_interest_reason"]
+
+    def test_oi_failure_trades_still_fetched(self):
+        from reporter.watcher.market_data import OpenInterestError
+        trades = [{"side": "BUY", "size": "10", "price": "0.5"}]
+        with patch("reporter.watcher.game_assembly.extract_market_data") as mock_emd, \
+             patch("reporter.watcher.game_assembly.fetch_recent_trades", return_value=trades) as mock_trades:
+            mock_emd.side_effect = OpenInterestError("empty /oi response")
+            result = build_game_report_data(800, [_OI_FAIL_EVENT])
+        mock_trades.assert_called_once_with("0xml8")
+        assert result["moneyline"]["recent_trades"] == trades
+
+    def test_oi_failure_trades_fetch_also_fails_falls_back_to_empty(self):
+        from reporter.watcher.market_data import OpenInterestError
+        with patch("reporter.watcher.game_assembly.extract_market_data") as mock_emd, \
+             patch("reporter.watcher.game_assembly.fetch_recent_trades",
+                   side_effect=RuntimeError("trades endpoint down")):
+            mock_emd.side_effect = OpenInterestError("empty /oi response")
+            result = build_game_report_data(800, [_OI_FAIL_EVENT])
+        assert result is not None, "Trades also failing must not abort the game either"
+        assert result["moneyline"]["recent_trades"] == []
+
+    def test_oi_failure_not_logged_to_skip_log(self):
+        # skip_log only tracks spread/total skips, not moneyline OI degradation
+        from reporter.watcher.market_data import OpenInterestError
+        skip_log: list = []
+        with patch("reporter.watcher.game_assembly.extract_market_data") as mock_emd, \
+             patch("reporter.watcher.game_assembly.fetch_recent_trades", return_value=[]):
+            mock_emd.side_effect = OpenInterestError("empty /oi response")
+            build_game_report_data(800, [_OI_FAIL_EVENT], _skip_log=skip_log)
+        assert skip_log == []
+
+    def test_oi_failure_logs_warning(self, capsys):
+        from reporter.watcher.market_data import OpenInterestError
+        with patch("reporter.watcher.game_assembly.extract_market_data") as mock_emd, \
+             patch("reporter.watcher.game_assembly.fetch_recent_trades", return_value=[]):
+            mock_emd.side_effect = OpenInterestError("empty /oi response")
+            build_game_report_data(800, [_OI_FAIL_EVENT])
+        out = capsys.readouterr().out
+        assert "open interest unavailable" in out
+        assert "800" in out
+
+    def test_requests_http_error_also_degrades_not_aborts(self):
+        import requests
+        with patch("reporter.watcher.game_assembly.extract_market_data") as mock_emd, \
+             patch("reporter.watcher.game_assembly.fetch_recent_trades", return_value=[]):
+            mock_emd.side_effect = requests.HTTPError("503 Service Unavailable")
+            result = build_game_report_data(800, [_OI_FAIL_EVENT])
+        assert result is not None
+        assert result["moneyline"]["open_interest_status"] == "unavailable"
+        assert result["moneyline"]["open_interest"] is None
+
+    def test_other_games_unaffected_by_one_games_oi_failure(self):
+        """Full-cycle-style check: game 800's OI failure must not affect game 100's assembly."""
+        from reporter.watcher.market_data import OpenInterestError
+
+        def flaky_extract(market):
+            if market.get("conditionId") == "0xml8":
+                raise OpenInterestError("empty /oi response")
+            return {"prices": {"Away": 0.5, "Home": 0.5}, "open_interest": 42.0, "recent_trades": []}
+
+        with patch("reporter.watcher.game_assembly.extract_market_data", side_effect=flaky_extract), \
+             patch("reporter.watcher.game_assembly.fetch_recent_trades", return_value=[]):
+            result_800 = build_game_report_data(800, [_OI_FAIL_EVENT])
+            result_100 = build_game_report_data(100, [_ML_EVENT, _PROP_EVENT])
+
+        assert result_800 is not None
+        assert result_800["moneyline"]["open_interest_status"] == "unavailable"
+        assert result_100 is not None
+        assert result_100["moneyline"]["open_interest_status"] == "ok"
+        assert result_100["moneyline"]["open_interest"] == 42.0

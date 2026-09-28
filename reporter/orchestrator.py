@@ -31,7 +31,7 @@ def _fetch_team_injuries(team_abbr: str) -> InjuryResult:
     try:
         return get_team_injuries(team_abbr)
     except Exception as exc:
-        print(f"[reporter] injury fetch failed for {team_abbr!r}: {exc}")
+        print(f"[reporter] injury fetch failed for {team_abbr!r}: {exc}", flush=True)
         return _INJURY_FETCH_FAILED
 
 
@@ -48,23 +48,37 @@ def run_once() -> None:
     Execute one full pipeline cycle: game assembly, then injury enrichment,
     then report writing.
 
+    Every stage prints a start/end line (flush=True) so a stalled or
+    failing cycle is visible in real time rather than only after the whole
+    cycle finishes -- important since a hung network call would otherwise
+    produce no output until it eventually times out or fails.
+
     Prints a summary to stdout, and swallows any exception so a transient
     failure (network outage, bad API response) does not crash the process
     or the surrounding run_forever() loop.
     """
     try:
+        print("[reporter] Stage: game assembly starting...", flush=True)
         games = get_reportable_games()
+        print(f"[reporter] Stage: game assembly done -- {len(games)} game(s).", flush=True)
+
+        print("[reporter] Stage: injury fetch starting...", flush=True)
         games = _attach_injuries(games)
+        print(f"[reporter] Stage: injury fetch done -- {len(games)} game(s).", flush=True)
+
+        print("[reporter] Stage: report writing starting...", flush=True)
         written = write_all_reports(games)
         count = len(written)
+        print(f"[reporter] Stage: report writing done -- {count} report(s) written.", flush=True)
+
         if count:
-            print(f"[reporter] Cycle complete: {count} report(s) written.")
+            print(f"[reporter] Cycle complete: {count} report(s) written.", flush=True)
             for path in written:
-                print(f"  {path.name}")
+                print(f"  {path.name}", flush=True)
         else:
-            print("[reporter] Cycle complete: no reportable games (0 reports written).")
+            print("[reporter] Cycle complete: no reportable games (0 reports written).", flush=True)
     except Exception as exc:
-        print(f"[reporter] ERROR in cycle: {exc}")
+        print(f"[reporter] ERROR in cycle: {exc}", flush=True)
 
 
 def run_forever() -> None:
@@ -76,7 +90,7 @@ def run_forever() -> None:
     can be stopped cleanly.
     """
     interval = settings.polling_interval_seconds
-    print(f"[reporter] Starting loop (interval={interval}s). Press Ctrl-C to stop.")
+    print(f"[reporter] Starting loop (interval={interval}s). Press Ctrl-C to stop.", flush=True)
     while True:
         run_once()
         time.sleep(interval)
