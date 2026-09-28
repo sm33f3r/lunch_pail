@@ -1,0 +1,265 @@
+{
+  "timestamp": "2026-09-28T14:32:00Z",
+  "status": "success",
+  "season": {
+    "year": 2026,
+    "type": 2
+  },
+  "injuries": [
+    {
+      "id": "33",
+      "displayName": "Baltimore Ravens",
+      "injuries": [
+        {
+          "id": "-2013625",
+          "longComment": "questionable",
+          "shortComment": "questionable",
+          "status": "Questionable",
+          "date": "2026-09-24T07:01Z",
+          "source": {
+            "id": "1",
+            "description": "basic/manual",
+            "state": "basic"
+          },
+          "type": {
+            "id": "2",
+            "name": "INJURY_STATUS_QUESTIONABLE",
+            "description": "questionable",
+            "abbreviation": "Q"
+          },
+          "athlete": {
+            "displayName": "Chris Moore",
+            "firstName": "Chris",
+            "lastName": "Moore",
+            "position": {
+              "name": "Wide Receiver",
+              "abbreviation": "WR",
+              "displayName": "Wide Receiver"
+            }
+          },
+          "details": {
+            "type": "Ankle",
+            "location": "Leg",
+            "detail": "Not Specified",
+            "side": "Not Specified",
+            "returnDate": "2026-09-27"
+          }
+        },
+        {
+          "id": "638955",
+          "longComment": "Stanley re-injured his toe in the Ravens' Week 2 loss to the Saints.",
+          "shortComment": "Stanley (toe) did not participate in Wednesday's practice.",
+          "status": "Questionable",
+          "date": "2026-09-24T02:38Z",
+          "source": {
+            "id": "1",
+            "description": "basic/manual",
+            "state": "basic"
+          },
+          "type": {
+            "id": "2",
+            "name": "INJURY_STATUS_QUESTIONABLE",
+            "description": "questionable",
+            "abbreviation": "Q"
+          },
+          "athlete": {
+            "displayName": "Ronnie Stanley",
+            "firstName": "Ronnie",
+            "lastName": "Stanley",
+            "position": {
+              "name": "Offensive Tackle",
+              "abbreviation": "OT",
+              "displayName": "Offensive Tackle"
+            }
+          },
+          "details": {
+            "type": "Toe",
+            "location": "Foot",
+            "detail": "Not Specified",
+            "side": "Not Specified",
+            "returnDate": "2026-09-28"
+          }
+        },
+        {
+          "id": "638999",
+          "longComment": "",
+          "shortComment": "",
+          "status": "Active",
+          "date": "2026-09-23T18:00Z",
+          "source": {
+            "id": "1",
+            "description": "basic/manual",
+            "state": "basic"
+          },
+          "type": {
+            "id": "1",
+            "name": "INJURY_STATUS_ACTIVE",
+            "description": "active",
+            "abbreviation": "A"
+          },
+          "athlete": {
+            "displayName": "Marcus Buchanan",
+            "firstName": "Marcus",
+            "lastName": "Buchanan",
+            "position": {
+              "name": "Cornerback",
+              "abbreviation": "CB",
+              "displayName": "Cornerback"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "21",
+      "displayName": "Philadelphia Eagles",
+      "injuries": [
+        {
+          "id": "700111",
+          "longComment": "Out for the week with a hamstring injury.",
+          "shortComment": "Smith (hamstring) has been ruled out.",
+          "status": "Out",
+          "date": "2026-09-25T15:10Z",
+          "source": {
+            "id": "1",
+            "description": "basic/manual",
+            "state": "basic"
+          },
+          "type": {
+            "id": "3",
+            "name": "INJURY_STATUS_OUT",
+            "description": "out",
+            "abbreviation": "O"
+          },
+          "athlete": {
+            "displayName": "DeVonta Smith",
+            "firstName": "DeVonta",
+            "lastName": "Smith",
+            "position": {
+              "name": "Wide Receiver",
+              "abbreviation": "WR",
+              "displayName": "Wide Receiver"
+            }
+          },
+          "details": {
+            "type": "Hamstring",
+            "location": "Leg",
+            "detail": "Not Specified",
+            "side": "Left",
+            "returnDate": "2026-10-05"
+          }
+        },
+        {
+          "id": "700222",
+          "longComment": "",
+          "shortComment": "",
+          "status": "Active",
+          "date": "2026-09-23T18:00Z",
+          "source": {
+            "id": "1",
+            "description": "basic/manual",
+            "state": "basic"
+          },
+          "type": {
+            "id": "1",
+            "name": "INJURY_STATUS_ACTIVE",
+            "description": "active",
+            "abbreviation": "A"
+          },
+          "athlete": {
+            "displayName": "Jalen Hurts",
+            "firstName": "Jalen",
+            "lastName": "Hurts",
+            "position": {
+              "name": "Quarterback",
+              "abbreviation": "QB",
+              "displayName": "Quarterback"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "6",
+      "displayName": "Dallas Cowboys",
+      "injuries": [
+        {
+          "id": "800333",
+          "longComment": "Doubtful to play with a knee injury sustained in practice.",
+          "shortComment": "Parsons (knee) is doubtful.",
+          "status": "Doubtful",
+          "date": "2026-09-26T20:45Z",
+          "source": {
+            "id": "1",
+            "description": "basic/manual",
+            "state": "basic"
+          },
+          "type": {
+            "id": "4",
+            "name": "INJURY_STATUS_DOUBTFUL",
+            "description": "doubtful",
+            "abbreviation": "D"
+          },
+          "athlete": {
+            "displayName": "Micah Parsons",
+            "firstName": "Micah",
+            "lastName": "Parsons",
+            "position": {
+              "name": "Linebacker",
+              "abbreviation": "LB",
+              "displayName": "Linebacker"
+            }
+          },
+          "details": {
+            "type": "Knee",
+            "location": "Leg",
+            "detail": "Not Specified",
+            "side": "Right",
+            "returnDate": "2026-10-01"
+          }
+        }
+      ]
+    },
+    {
+      "id": "5",
+      "displayName": "Cleveland Browns",
+      "injuries": [
+        {
+          "id": "900444",
+          "longComment": "",
+          "shortComment": "",
+          "status": "Out",
+          "date": "2026-09-25T12:00Z",
+          "source": {
+            "id": "1",
+            "description": "basic/manual",
+            "state": "basic"
+          },
+          "type": {
+            "id": "3",
+            "name": "INJURY_STATUS_OUT",
+            "description": "out",
+            "abbreviation": "O"
+          },
+          "athlete": {
+            "displayName": "",
+            "firstName": "",
+            "lastName": "",
+            "position": {
+              "name": "Tight End",
+              "abbreviation": "TE",
+              "displayName": "Tight End"
+            }
+          },
+          "details": {
+            "type": "Shoulder",
+            "location": "Arm",
+            "detail": "Not Specified",
+            "side": "Not Specified",
+            "returnDate": "2026-10-03"
+          }
+        }
+      ]
+    }
+  ]
+}

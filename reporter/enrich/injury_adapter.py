@@ -1,34 +1,47 @@
 """
 reporter/enrich/injury_adapter.py
 
-Fetches per-team NFL injury reports from ESPN (primary) with nflverse
-CSV as a fallback.
+Fetches NFL injury reports from ESPN (primary) with nflverse CSV as a
+fallback.
 
 Entry point: get_team_injuries(team_abbr) -> InjuryResult
 
-ESPN path:
-  - Hits sports.core.api.espn.com (the working endpoint; site.api.espn.com
-    returns empty {} for every team and must not be used).
-  - The list endpoint returns paginated $ref links; each ref is resolved
-    concurrently with a bounded thread pool (_MAX_WORKERS).
-  - A single failed $ref is skipped and logged; it does not abort the fetch.
+ESPN path (default -- league-wide):
+  - Production (Contabo/AS51167) gets HTTP 403 from sports.core.api.espn.com,
+    so the old per-team $ref fan-out fails for nearly every team there. The
+    default path instead hits the league-wide endpoint
+    (site.api.espn.com/apis/site/v2/sports/football/nfl/injuries), which is
+    reachable from production, in a single request covering all 32 teams.
+  - The parsed payload is cached in-process with a short TTL
+    (ESPN_INJURY_CACHE_TTL_SECONDS, default 300s) so N per-team lookups in
+    one cycle do not trigger N downloads.
+  - A single malformed record within a team's block is skipped and counted
+    (InjuryResult.failed_count) rather than aborting the team's fetch.
   - practice_status is always set to the unavailable sentinel because ESPN
     has no structured practice-participation field.
+
+ESPN path (legacy -- per-team, opt-in only):
+  - The old sports.core.api.espn.com $ref fan-out. 403s from production, so
+    it is NOT used by default. Enable with ESPN_LEGACY_PER_TEAM=true.
 
 nflverse fallback path:
   - Downloads the season CSV from nflverse-data GitHub releases.
   - practice_status IS populated here (nflverse has a structured field).
   - Only used when ESPN fails; tagged source="nflverse" so callers know
-    the data is at most ~1 week stale.
+    the data is at most ~1 week stale. InjuryResult carries the season/week
+    the data actually covers and a `stale` flag when that week is not the
+    current NFL week, so callers never mistake old data for current data.
 """
 
 from __future__ import annotations
 
 import csv
 import io
+import os
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import requests
 
@@ -36,6 +49,9 @@ import requests
 # Constants
 # ---------------------------------------------------------------------------
 
+_ESPN_LEAGUE_URL = (
+    "https://site.api.espn.com/apis/site/v2/sports/football/nfl/injuries"
+)
 _ESPN_LIST_URL = (
     "https://sports.core.api.espn.com/v2/sports/football/leagues/nfl"
     "/teams/{team_id}/injuries?limit=50"
@@ -45,9 +61,33 @@ _NFLVERSE_CSV_URL = (
     "/injuries_{season}.csv"
 )
 
-_ESPN_TIMEOUT    = 10   # seconds per request
-_NFLVERSE_TIMEOUT = 15
-_MAX_WORKERS     = 8    # concurrent $ref fetches per team
+_ESPN_TIMEOUT        = 10   # seconds per request (legacy per-team path)
+_ESPN_LEAGUE_TIMEOUT = 60   # league payload is ~8.7 MB
+_NFLVERSE_TIMEOUT    = 15
+_MAX_WORKERS         = 8    # concurrent $ref fetches per team (legacy path only)
+
+_DEFAULT_CACHE_TTL_SECONDS = 300
+
+
+def _cache_ttl_seconds() -> float:
+    """Read fresh each call so tests can monkeypatch the env between calls."""
+    raw = os.environ.get("ESPN_INJURY_CACHE_TTL_SECONDS")
+    if not raw:
+        return float(_DEFAULT_CACHE_TTL_SECONDS)
+    try:
+        return float(raw)
+    except ValueError:
+        return float(_DEFAULT_CACHE_TTL_SECONDS)
+
+
+def _legacy_per_team_enabled() -> bool:
+    """
+    The old per-team sports.core.api.espn.com fan-out 403s from production
+    (Contabo, AS51167) and must not run by default. Opt in explicitly.
+    """
+    return os.environ.get("ESPN_LEGACY_PER_TEAM", "").strip().lower() in (
+        "1", "true", "yes", "on",
+    )
 
 # Sentinel stored in InjuryRecord.practice_status when source is ESPN.
 # Callers must check for this string rather than None; it is deliberately
@@ -93,6 +133,10 @@ _ABBR_TO_ESPN_ID: dict[str, int] = {
     "WAS": 28,
 }
 
+_ESPN_ID_TO_ABBR: dict[str, str] = {
+    str(team_id): abbr for abbr, team_id in _ABBR_TO_ESPN_ID.items()
+}
+
 
 # ---------------------------------------------------------------------------
 # Data model
@@ -123,10 +167,32 @@ class InjuryResult:
       "ok"              — records found (may include "Active" entries from ESPN)
       "no_designations" — fetch succeeded but no records returned for this team
       "unavailable"     — both ESPN and nflverse failed; do not use records
+
+    failed_count:
+      Number of records in this team's block that failed to parse and were
+      skipped. A team with failures must never render identically to a
+      complete team, so this is always surfaced by the report writer.
+
+    as_of:
+      ESPN league payload's top-level `timestamp` field (when source="espn").
+      None for nflverse/unavailable results.
+
+    nflverse_season / nflverse_week:
+      The season/week the nflverse fallback data actually covers (when
+      source="nflverse"). None when not applicable.
+
+    stale:
+      True when source="nflverse" and nflverse_week is not the current NFL
+      week -- i.e. this data should not be treated as current-week data.
     """
     records: list[InjuryRecord]
     source:  str    # "espn" | "nflverse" | "unavailable"
     status:  str    # "ok" | "no_designations" | "unavailable"
+    failed_count:     int = 0
+    as_of:            str | None = None
+    nflverse_season:  int | None = None
+    nflverse_week:    int | None = None
+    stale:            bool = False
 
     @property
     def is_unavailable(self) -> bool:
@@ -148,6 +214,34 @@ def _current_season() -> int:
     """Current NFL season year (Sep–Jan; year of September = season year)."""
     now = datetime.now(timezone.utc)
     return now.year if now.month >= 3 else now.year - 1
+
+
+def _season_kickoff(season: int) -> datetime:
+    """First Thursday of September of the given season -- approximate Week 1 kickoff."""
+    d = datetime(season, 9, 1, tzinfo=timezone.utc)
+    days_ahead = (3 - d.weekday()) % 7   # Thursday == weekday 3
+    return d + timedelta(days=days_ahead)
+
+
+def _current_nfl_week(season: int | None = None) -> int:
+    """
+    Best-effort current NFL week number, clamped to [1, 18].
+
+    This is a date-based approximation (regular season == 18 weeks starting
+    the first Thursday of September) used only to flag nflverse data as
+    stale when it is not for the current week. It is not fed a schedule, so
+    it can be off by one around bye weeks/holidays; that's acceptable for a
+    staleness *warning*, which only needs to catch "this is old data," not
+    pinpoint the exact week.
+    """
+    now = datetime.now(timezone.utc)
+    if season is None:
+        season = _current_season()
+    kickoff = _season_kickoff(season)
+    if now < kickoff:
+        return 1
+    week = (now - kickoff).days // 7 + 1
+    return max(1, min(week, 18))
 
 
 def _espn_team_id(abbr: str) -> int:
@@ -270,6 +364,129 @@ def _parse_espn_record(raw: dict) -> InjuryRecord | None:
     )
 
 
+def _parse_league_record(raw: dict) -> InjuryRecord | None:
+    """
+    Parse one injury dict from the league-wide payload's per-team
+    `injuries` list into an InjuryRecord. Returns None if malformed.
+
+    Shape (verified against the live endpoint):
+      id, status (titlecase), date, shortComment, longComment, source,
+      type, athlete{displayName, firstName, lastName, position{abbreviation}}.
+      details{type, location, side, detail, returnDate} is present only on
+      injured players (~1/3 of records) -- absent on "Active" is expected,
+      not an error.
+    """
+    athlete = raw.get("athlete") or {}
+    name = athlete.get("displayName") or ""
+    if not name:
+        return None
+    position_obj = athlete.get("position") or {}
+    details = raw.get("details") or {}
+    side = details.get("side") or None
+    if side == "Not Specified":
+        side = None
+    return InjuryRecord(
+        player_name=name,
+        position=position_obj.get("abbreviation", ""),
+        designation=raw.get("status", ""),
+        practice_status=PRACTICE_STATUS_UNAVAILABLE,
+        injury_type=details.get("type") or None,
+        source="espn",
+        updated_at=raw.get("date") or None,
+        short_comment=raw.get("shortComment") or None,
+        location=details.get("location") or None,
+        side=side,
+        return_date=details.get("returnDate") or None,
+    )
+
+
+# Module-level cache for the league-wide payload. A single fetch serves
+# every team lookup in a cycle; TTL keeps it from going stale across cycles.
+_LEAGUE_CACHE: dict = {"payload": None, "fetched_at": None}
+
+
+def _reset_league_cache() -> None:
+    """Test helper -- clears the in-process league payload cache."""
+    _LEAGUE_CACHE["payload"] = None
+    _LEAGUE_CACHE["fetched_at"] = None
+
+
+def fetch_espn_league_payload() -> dict:
+    """
+    Fetch (or serve from cache) the league-wide ESPN injuries payload.
+
+    One request covers all 32 teams (~8.7 MB). The parsed result is cached
+    in-process for ESPN_INJURY_CACHE_TTL_SECONDS (default 300s) so that
+    looking up injuries for many teams/games in one cycle does not trigger
+    a download per team.
+
+    Raises:
+        ESPNError: on network failure, non-200 status, or non-JSON body.
+    """
+    cached = _LEAGUE_CACHE["payload"]
+    fetched_at = _LEAGUE_CACHE["fetched_at"]
+    if cached is not None and fetched_at is not None:
+        if (time.monotonic() - fetched_at) < _cache_ttl_seconds():
+            return cached
+
+    try:
+        resp = requests.get(_ESPN_LEAGUE_URL, timeout=_ESPN_LEAGUE_TIMEOUT)
+    except requests.RequestException as exc:
+        raise ESPNError(f"ESPN league injuries request failed: {exc}") from exc
+
+    if resp.status_code != 200:
+        raise ESPNError(f"ESPN league injuries returned HTTP {resp.status_code}")
+
+    try:
+        payload = resp.json()
+    except ValueError as exc:
+        raise ESPNError(f"ESPN league injuries non-JSON response: {exc}") from exc
+
+    _LEAGUE_CACHE["payload"] = payload
+    _LEAGUE_CACHE["fetched_at"] = time.monotonic()
+    return payload
+
+
+def _team_block(payload: dict, team_abbr: str) -> dict | None:
+    """Find the team block in the league payload matching team_abbr's ESPN id."""
+    team_id = str(_espn_team_id(team_abbr))
+    for block in payload.get("injuries") or []:
+        if str(block.get("id")) == team_id:
+            return block
+    return None
+
+
+def fetch_espn_league_injuries(team_abbr: str) -> tuple[list[InjuryRecord], int, str | None]:
+    """
+    Fetch this team's injuries from the (cached) league-wide ESPN payload.
+
+    Returns:
+        (records, failed_count, as_of) where failed_count is the number of
+        records in this team's block that failed to parse and were skipped,
+        and as_of is the payload's top-level `timestamp` field.
+
+    Raises:
+        ESPNError: if the league payload cannot be fetched/parsed.
+        ValueError: if team_abbr is not recognised.
+    """
+    payload = fetch_espn_league_payload()
+    as_of = payload.get("timestamp")
+    block = _team_block(payload, team_abbr)
+    if block is None:
+        return [], 0, as_of
+
+    records: list[InjuryRecord] = []
+    failed = 0
+    for raw in block.get("injuries") or []:
+        rec = _parse_league_record(raw)
+        if rec is None:
+            failed += 1
+        else:
+            records.append(rec)
+
+    return records, failed, as_of
+
+
 # ---------------------------------------------------------------------------
 # Exceptions
 # ---------------------------------------------------------------------------
@@ -324,13 +541,14 @@ def fetch_espn_injuries(team_abbr: str) -> list[InjuryRecord]:
     return records
 
 
-def fetch_nflverse_injuries(
+def fetch_nflverse_injuries_with_meta(
     team_abbr: str,
     week: int | None = None,
     season: int | None = None,
-) -> list[InjuryRecord]:
+) -> tuple[list[InjuryRecord], int, int | None]:
     """
-    Fetch injury data for one team from nflverse's season CSV.
+    Fetch injury data for one team from nflverse's season CSV, along with
+    the season/week the returned data actually covers.
 
     Args:
         team_abbr: e.g. "BAL". Matches nflverse team column directly (no crosswalk needed).
@@ -338,7 +556,9 @@ def fetch_nflverse_injuries(
         season:    Season year. None = current season.
 
     Returns:
-        List of InjuryRecord with source="nflverse" and practice_status populated.
+        (records, season, target_week). target_week is None when the CSV
+        has no usable week column for this team (records are unfiltered
+        in that case, and staleness cannot be determined).
 
     Raises:
         NflverseError: on network or parse failure.
@@ -362,7 +582,7 @@ def fetch_nflverse_injuries(
         raise NflverseError(f"nflverse CSV parse failed: {exc}") from exc
 
     if not rows:
-        return []
+        return [], season, None
 
     # Resolve target week.
     if week is not None:
@@ -390,6 +610,27 @@ def fetch_nflverse_injuries(
             updated_at=None,
         ))
 
+    return records, season, target_week
+
+
+def fetch_nflverse_injuries(
+    team_abbr: str,
+    week: int | None = None,
+    season: int | None = None,
+) -> list[InjuryRecord]:
+    """
+    Fetch injury data for one team from nflverse's season CSV.
+
+    Thin wrapper around fetch_nflverse_injuries_with_meta() for callers that
+    only need the records (kept for backward compatibility).
+
+    Returns:
+        List of InjuryRecord with source="nflverse" and practice_status populated.
+
+    Raises:
+        NflverseError: on network or parse failure.
+    """
+    records, _season, _week = fetch_nflverse_injuries_with_meta(team_abbr, week=week, season=season)
     return records
 
 
@@ -399,7 +640,11 @@ def fetch_nflverse_injuries(
 
 def get_team_injuries(team_abbr: str, week: int | None = None) -> InjuryResult:
     """
-    Return the injury report for one team, ESPN first, nflverse as fallback.
+    Return the injury report for one team.
+
+    Source chain: league-wide ESPN -> nflverse -> unavailable. The legacy
+    per-team ESPN path (sports.core.api.espn.com) 403s from production and
+    is only used when ESPN_LEGACY_PER_TEAM is explicitly enabled.
 
     Return states:
       status="ok"              records found; source indicates which data provider
@@ -414,18 +659,40 @@ def get_team_injuries(team_abbr: str, week: int | None = None) -> InjuryResult:
         InjuryResult
     """
     # ESPN — primary, current-week live data
-    try:
-        records = fetch_espn_injuries(team_abbr)
-        status = "ok" if records else "no_designations"
-        return InjuryResult(records=records, source="espn", status=status)
-    except (ESPNError, ValueError) as exc:
-        print(f"[injury_adapter] ESPN failed for {team_abbr!r}: {exc} — falling back to nflverse.")
+    if _legacy_per_team_enabled():
+        try:
+            records = fetch_espn_injuries(team_abbr)
+            status = "ok" if records else "no_designations"
+            return InjuryResult(records=records, source="espn", status=status)
+        except (ESPNError, ValueError) as exc:
+            print(f"[injury_adapter] ESPN (legacy per-team) failed for {team_abbr!r}: {exc} — falling back to nflverse.")
+    else:
+        try:
+            records, failed_count, as_of = fetch_espn_league_injuries(team_abbr)
+            status = "ok" if records else "no_designations"
+            return InjuryResult(
+                records=records,
+                source="espn",
+                status=status,
+                failed_count=failed_count,
+                as_of=as_of,
+            )
+        except (ESPNError, ValueError) as exc:
+            print(f"[injury_adapter] ESPN (league-wide) failed for {team_abbr!r}: {exc} — falling back to nflverse.")
 
     # nflverse — fallback, ~1 week stale but has structured practice_status
     try:
-        records = fetch_nflverse_injuries(team_abbr, week=week)
+        records, nfl_season, target_week = fetch_nflverse_injuries_with_meta(team_abbr, week=week)
         status = "ok" if records else "no_designations"
-        return InjuryResult(records=records, source="nflverse", status=status)
+        stale = target_week is not None and target_week != _current_nfl_week(nfl_season)
+        return InjuryResult(
+            records=records,
+            source="nflverse",
+            status=status,
+            nflverse_season=nfl_season,
+            nflverse_week=target_week,
+            stale=stale,
+        )
     except NflverseError as exc:
         print(f"[injury_adapter] nflverse also failed for {team_abbr!r}: {exc}.")
 

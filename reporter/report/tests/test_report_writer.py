@@ -171,6 +171,80 @@ class TestFormatGameReport:
         report = format_game_report(game)
         assert "UNAVAILABLE" in report
 
+    def test_injury_report_espn_as_of_uses_payload_timestamp(self):
+        result = InjuryResult(
+            records=[], source="espn", status="no_designations",
+            as_of="2026-09-28T14:32:00Z",
+        )
+        game = _sample_game(away_injuries=result)
+        report = format_game_report(game)
+        assert "As of: 2026-09-28T14:32:00Z" in report
+
+    def test_injury_report_failed_count_renders_and_is_not_silent(self):
+        rec = InjuryRecord(
+            player_name="Test Player", position="WR", designation="Questionable",
+            practice_status=None, injury_type=None, source="espn", updated_at=None,
+        )
+        game = _sample_game(
+            away_injuries=InjuryResult(records=[rec], source="espn", status="ok", failed_count=3),
+        )
+        report = format_game_report(game)
+        assert "3 injury record(s) for this team could not be parsed." in report
+
+    def test_injury_report_no_failed_count_line_when_zero(self):
+        report = format_game_report(_GAME)
+        assert "could not be parsed" not in report
+
+    def test_injury_report_failed_team_differs_from_complete_team(self):
+        """A team with parse failures must never render identically to a complete one."""
+        rec = InjuryRecord(
+            player_name="Test Player", position="WR", designation="Questionable",
+            practice_status=None, injury_type=None, source="espn", updated_at=None,
+        )
+        complete = InjuryResult(records=[rec], source="espn", status="ok", failed_count=0)
+        with_failures = InjuryResult(records=[rec], source="espn", status="ok", failed_count=1)
+        game_complete = _sample_game(away_injuries=complete)
+        game_failed = _sample_game(away_injuries=with_failures)
+        assert format_game_report(game_complete) != format_game_report(game_failed)
+
+    def test_injury_report_nflverse_states_season_and_week(self):
+        result = InjuryResult(
+            records=[], source="nflverse", status="no_designations",
+            nflverse_season=2026, nflverse_week=3,
+        )
+        game = _sample_game(away_injuries=result)
+        report = format_game_report(game)
+        assert "nflverse, 2026 week 3" in report
+
+    def test_injury_report_nflverse_no_generation_time_as_of_line(self):
+        result = InjuryResult(
+            records=[], source="nflverse", status="no_designations",
+            nflverse_season=2026, nflverse_week=3,
+        )
+        game = _sample_game(away_injuries=result)
+        report = format_game_report(game)
+        # nflverse sections must not carry a misleading "As of: <generation time>" line.
+        assert "As of:" not in report
+
+    def test_injury_report_nflverse_stale_shows_warning(self):
+        result = InjuryResult(
+            records=[], source="nflverse", status="no_designations",
+            nflverse_season=2026, nflverse_week=3, stale=True,
+        )
+        game = _sample_game(away_injuries=result)
+        report = format_game_report(game)
+        assert "WARNING" in report
+        assert "NOT current-week data" in report
+
+    def test_injury_report_nflverse_not_stale_no_warning(self):
+        result = InjuryResult(
+            records=[], source="nflverse", status="no_designations",
+            nflverse_season=2026, nflverse_week=3, stale=False,
+        )
+        game = _sample_game(away_injuries=result)
+        report = format_game_report(game)
+        assert "WARNING" not in report
+
     def test_injury_report_shortcomment_skipped_when_bare_repeat(self):
         rec = InjuryRecord(
             player_name="Bare Repeat",

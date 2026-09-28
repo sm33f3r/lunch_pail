@@ -172,6 +172,24 @@ def _format_team_injury_section(team_name: str, team_abbr: str, result: InjuryRe
 
     if result.source == "espn":
         lines.append("_Practice status is not available from this source._")
+        if result.as_of:
+            lines.append(f"_As of: {result.as_of}_")
+
+    if result.source == "nflverse":
+        if result.nflverse_season is not None and result.nflverse_week is not None:
+            lines.append(f"_Data: nflverse, {result.nflverse_season} week {result.nflverse_week}_")
+        else:
+            lines.append("_Data: nflverse (week unknown)_")
+        if result.stale:
+            lines.append(
+                "_WARNING: this is NOT current-week data -- injury "
+                "designations may be out of date._"
+            )
+
+    if result.failed_count:
+        lines.append(
+            f"_{result.failed_count} injury record(s) for this team could not be parsed._"
+        )
 
     lines.append("")
 
@@ -193,7 +211,7 @@ def _format_team_injury_section(team_name: str, team_abbr: str, result: InjuryRe
     return "\n".join(lines)
 
 
-def _injury_report_section(game: dict, report_timestamp: str) -> str:
+def _injury_report_section(game: dict) -> str:
     """
     Render the full injury report section for both teams of a game.
 
@@ -201,11 +219,17 @@ def _injury_report_section(game: dict, report_timestamp: str) -> str:
     attached by the orchestrator between game assembly and report writing.
     Absent keys are treated as unavailable rather than causing a KeyError,
     so a per-source degradation never blanks the whole section.
+
+    Each team's "as of" / data-recency line is per-team (not a shared
+    report-generation timestamp): ESPN sections use the payload's own
+    timestamp, and nflverse sections state the season/week actually
+    returned plus a staleness warning when that week isn't current --
+    report generation time is never a substitute for either.
     """
     away_result: InjuryResult = game.get("away_injuries") or _INJURIES_NOT_WIRED
     home_result: InjuryResult = game.get("home_injuries") or _INJURIES_NOT_WIRED
 
-    lines = [f"## Injury Report\n\n_As of: {report_timestamp}_\n"]
+    lines = ["## Injury Report\n"]
     lines.append(_format_team_injury_section(game["away_team"], game["away_abbr"], away_result))
     lines.append(_format_team_injury_section(game["home_team"], game["home_abbr"], home_result))
     return "\n".join(lines)
@@ -240,7 +264,7 @@ def format_game_report(game: dict) -> str:
     # Injury report -- prominent, immediately after header. This is the
     # standing injury-report-gate: both teams' injury designations must
     # appear here, sourced live (ESPN, with nflverse fallback).
-    sections.append(_injury_report_section(game, now_utc))
+    sections.append(_injury_report_section(game))
 
     # Market data
     if game["moneyline"]:
