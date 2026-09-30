@@ -15,14 +15,26 @@ os.environ.setdefault("REPORT_OUTPUT_DIR", "/tmp/reporter_test")
 os.environ.setdefault("POLLING_INTERVAL_SECONDS", "300")
 
 from reporter.enrich.injury_adapter import InjuryResult  # noqa: E402
+from reporter.enrich.team_stats_adapter import TeamStatsResult, WindowStats  # noqa: E402
 from reporter.orchestrator import run_forever, run_once  # noqa: E402
 
 
-def _game(away_abbr="KC", home_abbr="MIA"):
-    return {"away_abbr": away_abbr, "home_abbr": home_abbr}
+def _game(away_abbr="KC", home_abbr="MIA", game_date="2026-09-28"):
+    return {"away_abbr": away_abbr, "home_abbr": home_abbr, "game_date": game_date}
 
 
 _OK_RESULT = InjuryResult(records=[], source="espn", status="no_designations")
+
+_OK_WINDOW = WindowStats(
+    status="ok", games_used=3,
+    epa_offense=0.093, epa_defense=-0.304,
+    points_for_avg=27.0, points_against_avg=7.0,
+    wins=3, losses=0, ties=0,
+)
+_OK_TEAM_STATS = TeamStatsResult(
+    team_abbr="KC", status="ok", season=2026,
+    last4=_OK_WINDOW, season_to_date=_OK_WINDOW,
+)
 
 
 class TestRunOnce:
@@ -75,6 +87,7 @@ class TestRunOnce:
         games = [_game("KC", "MIA"), _game("PHI", "NYG")]
         with patch("reporter.orchestrator.get_reportable_games", return_value=games), \
              patch("reporter.orchestrator.get_team_injuries", return_value=_OK_RESULT) as mock_fetch, \
+             patch("reporter.orchestrator.get_team_rolling_stats", return_value=_OK_TEAM_STATS), \
              patch("reporter.orchestrator.write_all_reports", return_value=[]):
             run_once()
         mock_fetch.assert_has_calls(
@@ -86,6 +99,7 @@ class TestRunOnce:
         games = [_game("KC", "MIA")]
         with patch("reporter.orchestrator.get_reportable_games", return_value=games), \
              patch("reporter.orchestrator.get_team_injuries", return_value=_OK_RESULT), \
+             patch("reporter.orchestrator.get_team_rolling_stats", return_value=_OK_TEAM_STATS), \
              patch("reporter.orchestrator.write_all_reports", return_value=[]) as mock_write:
             run_once()
         written_games = mock_write.call_args[0][0]
@@ -102,12 +116,80 @@ class TestRunOnce:
 
         with patch("reporter.orchestrator.get_reportable_games", return_value=games), \
              patch("reporter.orchestrator.get_team_injuries", side_effect=flaky), \
+             patch("reporter.orchestrator.get_team_rolling_stats", return_value=_OK_TEAM_STATS), \
              patch("reporter.orchestrator.write_all_reports", return_value=[]) as mock_write:
             run_once()  # must not raise
 
         written_games = mock_write.call_args[0][0]
         assert written_games[0]["away_injuries"] is _OK_RESULT
         assert written_games[0]["home_injuries"].status == "unavailable"
+
+    # ------------------------------------------------------------------
+    # Team-stats-fetch wiring (Phase 4 Step 6b)
+    # ------------------------------------------------------------------
+
+    def test_fetches_team_stats_for_both_teams_of_every_game(self):
+        games = [_game("KC", "MIA"), _game("PHI", "NYG")]
+        with patch("reporter.orchestrator.get_reportable_games", return_value=games), \
+             patch("reporter.orchestrator.get_team_injuries", return_value=_OK_RESULT), \
+             patch("reporter.orchestrator.get_team_rolling_stats", return_value=_OK_TEAM_STATS) as mock_fetch, \
+             patch("reporter.orchestrator.write_all_reports", return_value=[]):
+            run_once()
+        mock_fetch.assert_has_calls(
+            [call("KC", "2026-09-28"), call("MIA", "2026-09-28"),
+             call("PHI", "2026-09-28"), call("NYG", "2026-09-28")],
+            any_order=True,
+        )
+        assert mock_fetch.call_count == 4
+
+    def test_team_stats_attached_to_games_passed_to_write_all_reports(self):
+        games = [_game("KC", "MIA")]
+        with patch("reporter.orchestrator.get_reportable_games", return_value=games), \
+             patch("reporter.orchestrator.get_team_injuries", return_value=_OK_RESULT), \
+             patch("reporter.orchestrator.get_team_rolling_stats", return_value=_OK_TEAM_STATS), \
+             patch("reporter.orchestrator.write_all_reports", return_value=[]) as mock_write:
+            run_once()
+        written_games = mock_write.call_args[0][0]
+        assert written_games[0]["away_team_stats"] is _OK_TEAM_STATS
+        assert written_games[0]["home_team_stats"] is _OK_TEAM_STATS
+
+    def test_one_team_stats_failure_does_not_abort_game_report(self):
+        games = [_game("KC", "MIA")]
+
+        def flaky(abbr, before_date):
+            if abbr == "MIA":
+                raise RuntimeError("nflreadpy down")
+            return _OK_TEAM_STATS
+
+        with patch("reporter.orchestrator.get_reportable_games", return_value=games), \
+             patch("reporter.orchestrator.get_team_injuries", return_value=_OK_RESULT), \
+             patch("reporter.orchestrator.get_team_rolling_stats", side_effect=flaky), \
+             patch("reporter.orchestrator.write_all_reports", return_value=[]) as mock_write:
+            run_once()  # must not raise
+
+        written_games = mock_write.call_args[0][0]
+        assert written_games[0]["away_team_stats"] is _OK_TEAM_STATS
+        assert written_games[0]["home_team_stats"].status == "unavailable"
+
+    def test_one_game_team_stats_failure_does_not_abort_other_games(self):
+        games = [_game("KC", "MIA"), _game("PHI", "NYG")]
+
+        def flaky(abbr, before_date):
+            if abbr in ("KC", "MIA"):
+                raise RuntimeError("nflreadpy down")
+            return _OK_TEAM_STATS
+
+        with patch("reporter.orchestrator.get_reportable_games", return_value=games), \
+             patch("reporter.orchestrator.get_team_injuries", return_value=_OK_RESULT), \
+             patch("reporter.orchestrator.get_team_rolling_stats", side_effect=flaky), \
+             patch("reporter.orchestrator.write_all_reports", return_value=[]) as mock_write:
+            run_once()  # must not raise
+
+        written_games = mock_write.call_args[0][0]
+        assert written_games[0]["away_team_stats"].status == "unavailable"
+        assert written_games[0]["home_team_stats"].status == "unavailable"
+        assert written_games[1]["away_team_stats"] is _OK_TEAM_STATS
+        assert written_games[1]["home_team_stats"] is _OK_TEAM_STATS
 
     def test_game_assembly_failure_does_not_crash_run_once(self):
         with patch("reporter.orchestrator.get_reportable_games", side_effect=RuntimeError("assembly down")):

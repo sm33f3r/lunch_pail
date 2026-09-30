@@ -13,10 +13,15 @@ import time
 
 from reporter.config import settings
 from reporter.enrich.injury_adapter import InjuryResult, get_team_injuries
+from reporter.enrich.team_stats_adapter import TeamStatsResult, get_team_rolling_stats
 from reporter.report.report_writer import write_all_reports
 from reporter.watcher.game_assembly import get_reportable_games
 
 _INJURY_FETCH_FAILED = InjuryResult(records=[], source="unavailable", status="unavailable")
+_TEAM_STATS_FETCH_FAILED = TeamStatsResult(
+    team_abbr="", status="unavailable", season=None,
+    last4=None, season_to_date=None, error="unexpected exception in orchestrator",
+)
 
 
 def _fetch_team_injuries(team_abbr: str) -> InjuryResult:
@@ -35,11 +40,40 @@ def _fetch_team_injuries(team_abbr: str) -> InjuryResult:
         return _INJURY_FETCH_FAILED
 
 
+def _fetch_team_rolling_stats(team_abbr: str, before_date: str) -> TeamStatsResult:
+    """
+    Fetch one team's rolling stats, never raising.
+
+    get_team_rolling_stats() already degrades to status="unavailable" on
+    nflreadpy fetch failures; this wrapper additionally guards against an
+    unexpected exception so a single team's stats lookup can never abort
+    the game's report or other games' reports.
+    """
+    try:
+        return get_team_rolling_stats(team_abbr, before_date)
+    except Exception as exc:
+        print(f"[reporter] team stats fetch failed for {team_abbr!r}: {exc}", flush=True)
+        return _TEAM_STATS_FETCH_FAILED
+
+
 def _attach_injuries(games: list[dict]) -> list[dict]:
     """Attach away_injuries/home_injuries InjuryResult objects to each game."""
     for game in games:
         game["away_injuries"] = _fetch_team_injuries(game["away_abbr"])
         game["home_injuries"] = _fetch_team_injuries(game["home_abbr"])
+    return games
+
+
+def _attach_team_stats(games: list[dict]) -> list[dict]:
+    """
+    Attach away_team_stats/home_team_stats TeamStatsResult objects to each
+    game. before_date is the game's own date, so completed games on or
+    after it are excluded from both teams' rolling windows.
+    """
+    for game in games:
+        before_date = game.get("game_date") or ""
+        game["away_team_stats"] = _fetch_team_rolling_stats(game["away_abbr"], before_date)
+        game["home_team_stats"] = _fetch_team_rolling_stats(game["home_abbr"], before_date)
     return games
 
 
@@ -65,6 +99,10 @@ def run_once() -> None:
         print("[reporter] Stage: injury fetch starting...", flush=True)
         games = _attach_injuries(games)
         print(f"[reporter] Stage: injury fetch done -- {len(games)} game(s).", flush=True)
+
+        print("[reporter] Stage: team stats fetch starting...", flush=True)
+        games = _attach_team_stats(games)
+        print(f"[reporter] Stage: team stats fetch done -- {len(games)} game(s).", flush=True)
 
         print("[reporter] Stage: report writing starting...", flush=True)
         written = write_all_reports(games)

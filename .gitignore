@@ -36,3 +36,7 @@ reports/
 # Injury recon narrative (fixtures go in reporter/enrich/fixtures/, this doc stays local)
 INJURY_RECON*.md
 reporter/enrich/INJURY_RECON*.md
+
+# Rolling team-performance stats recon narrative (same convention as injury recon)
+ROLLING_STATS_RECON*.md
+reporter/enrich/ROLLING_STATS_RECON*.md

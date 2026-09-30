@@ -18,6 +18,7 @@ os.environ.setdefault("REPORT_OUTPUT_DIR", "/tmp/reporter_test")
 os.environ.setdefault("POLLING_INTERVAL_SECONDS", "300")
 
 from reporter.enrich.injury_adapter import InjuryRecord, InjuryResult  # noqa: E402
+from reporter.enrich.team_stats_adapter import TeamStatsResult, WindowStats  # noqa: E402
 from reporter.report.report_writer import (  # noqa: E402
     format_game_report,
     write_all_reports,
@@ -46,6 +47,23 @@ def _ok_injury_result(source="espn") -> InjuryResult:
     return InjuryResult(records=[rec], source=source, status="ok")
 
 
+def _ok_window_stats(games_used=4) -> WindowStats:
+    return WindowStats(
+        status="ok", games_used=games_used,
+        epa_offense=0.093, epa_defense=-0.304,
+        points_for_avg=27.0, points_against_avg=7.0,
+        wins=games_used, losses=0, ties=0,
+    )
+
+
+def _ok_team_stats(team_abbr="BAL") -> TeamStatsResult:
+    return TeamStatsResult(
+        team_abbr=team_abbr, status="ok", season=2026,
+        last4=_ok_window_stats(3),
+        season_to_date=_ok_window_stats(3),
+    )
+
+
 def _sample_game(
     game_id=101,
     away_abbr="BAL",
@@ -59,6 +77,8 @@ def _sample_game(
     totals=None,
     away_injuries=None,
     home_injuries=None,
+    away_team_stats=None,
+    home_team_stats=None,
 ) -> dict:
     if moneyline is None:
         moneyline = {
@@ -77,6 +97,10 @@ def _sample_game(
         away_injuries = _ok_injury_result("espn")
     if home_injuries is None:
         home_injuries = _ok_injury_result("espn")
+    if away_team_stats is None:
+        away_team_stats = _ok_team_stats(away_abbr)
+    if home_team_stats is None:
+        home_team_stats = _ok_team_stats(home_abbr)
     return {
         "game_id":   game_id,
         "away_team": away_team,
@@ -86,6 +110,8 @@ def _sample_game(
         "game_date": game_date,
         "away_injuries": away_injuries,
         "home_injuries": home_injuries,
+        "away_team_stats": away_team_stats,
+        "home_team_stats": home_team_stats,
         "event_slug": f"nfl-{away_abbr.lower()}-{home_abbr.lower()}-{game_date}",
         "event_url":  f"https://polymarket.com/event/nfl-{away_abbr.lower()}-{home_abbr.lower()}-{game_date}",
         "volume":     volume,
@@ -276,6 +302,81 @@ class TestFormatGameReport:
         report = format_game_report(game)
         assert "did not participate in Wednesday's practice" in report
 
+    # ------------------------------------------------------------------
+    # Team performance (rolling stats) section
+    # ------------------------------------------------------------------
+
+    def test_team_performance_section_present(self):
+        report = format_game_report(_GAME)
+        assert "## Team Performance" in report
+
+    def test_team_performance_both_teams_present(self):
+        report = format_game_report(_GAME)
+        assert "### Baltimore Ravens (BAL)" in report
+        assert "### Dallas Cowboys (DAL)" in report
+
+    def test_team_performance_shows_last4_and_season_to_date(self):
+        report = format_game_report(_GAME)
+        assert "Last 4 Games" in report
+        assert "Season-to-Date" in report
+
+    def test_team_performance_epa_values_rendered(self):
+        report = format_game_report(_GAME)
+        assert "+0.093" in report
+        assert "-0.304" in report
+
+    def test_team_performance_points_and_record_rendered(self):
+        report = format_game_report(_GAME)
+        assert "Points for (avg): 27.0" in report
+        assert "Points against (avg): 7.0" in report
+        assert "Record: 3-0" in report
+
+    def test_team_performance_insufficient_data_shows_marker_not_zero(self):
+        insufficient = TeamStatsResult(
+            team_abbr="BAL", status="ok", season=2026,
+            last4=WindowStats(
+                status="insufficient_data", games_used=0,
+                epa_offense=None, epa_defense=None,
+                points_for_avg=None, points_against_avg=None,
+                wins=0, losses=0, ties=0,
+            ),
+            season_to_date=WindowStats(
+                status="insufficient_data", games_used=0,
+                epa_offense=None, epa_defense=None,
+                points_for_avg=None, points_against_avg=None,
+                wins=0, losses=0, ties=0,
+            ),
+        )
+        game = _sample_game(away_team_stats=insufficient, home_team_stats=insufficient)
+        report = format_game_report(game)
+        assert "INSUFFICIENT DATA" in report
+        team_perf = report.split("## Team Performance")[1].split("## NOT YET AVAILABLE")[0]
+        assert "0.0" not in team_perf
+        assert "EPA/play" not in team_perf
+
+    def test_team_performance_unavailable_shows_marker(self):
+        unavailable = TeamStatsResult(
+            team_abbr="BAL", status="unavailable", season=None,
+            last4=None, season_to_date=None, error="nflreadpy down",
+        )
+        game = _sample_game(away_team_stats=unavailable)
+        report = format_game_report(game)
+        assert "UNAVAILABLE" in report
+        assert "nflreadpy down" in report
+
+    def test_team_performance_game_count_stated_explicitly(self):
+        game = _sample_game(
+            away_team_stats=_ok_team_stats("BAL"),  # games_used=3 in both windows
+        )
+        report = format_game_report(game)
+        assert "n=3 completed game(s)" in report
+
+    def test_team_performance_not_wired_defaults_to_unavailable(self):
+        game = _sample_game()
+        del game["away_team_stats"]
+        report = format_game_report(game)
+        assert "UNAVAILABLE" in report
+
     def test_moneyline_section_present(self):
         report = format_game_report(_GAME)
         assert "## Moneyline" in report
@@ -334,8 +435,13 @@ class TestFormatGameReport:
         assert "Injury designations" in report or "injury" in report.lower()
 
     def test_phase4_lists_team_stats(self):
+        # Team stats moved out of the Phase 4 placeholder into a real
+        # rendered section (Phase 4 Step 6b) -- this now checks for that
+        # section directly, mirroring how the injury-designations test
+        # above checks the real Injury Report section rather than a
+        # placeholder bullet.
         report = format_game_report(_GAME)
-        assert "Team stats" in report or "team stats" in report.lower()
+        assert "## Team Performance" in report
 
     def test_phase4_lists_weather(self):
         report = format_game_report(_GAME)

@@ -19,6 +19,7 @@ from pathlib import Path
 
 from reporter.config import settings
 from reporter.enrich.injury_adapter import InjuryRecord, InjuryResult
+from reporter.enrich.team_stats_adapter import TeamStatsResult, WindowStats
 from reporter.watcher.game_assembly import get_reportable_games
 
 # Pattern used to identify report files written by a previous run so stale
@@ -32,6 +33,13 @@ _PLACEHOLDER_EPSILON = 0.005
 # Used when a game dict has no away_injuries/home_injuries key at all
 # (e.g. callers that haven't wired the injury stage in yet).
 _INJURIES_NOT_WIRED = InjuryResult(records=[], source="unavailable", status="unavailable")
+
+# Used when a game dict has no away_team_stats/home_team_stats key at all
+# (e.g. callers that haven't wired the team-stats stage in yet).
+_TEAM_STATS_NOT_WIRED = TeamStatsResult(
+    team_abbr="", status="unavailable", season=None,
+    last4=None, season_to_date=None, error="team stats stage not wired in",
+)
 
 
 # ---------------------------------------------------------------------------
@@ -241,6 +249,65 @@ def _injury_report_section(game: dict) -> str:
 
 
 # ---------------------------------------------------------------------------
+# Team performance (rolling stats) section
+# ---------------------------------------------------------------------------
+
+def _fmt_window_stats(label: str, window: WindowStats) -> list[str]:
+    """Render one window (last-4 or season-to-date) as a labeled bullet block."""
+    if window.status == "insufficient_data":
+        return [f"**{label}:** INSUFFICIENT DATA -- 0 completed games so far this season."]
+
+    lines = [f"**{label}** (n={window.games_used} completed game(s)):"]
+    epa_off = f"{window.epa_offense:+.3f}" if window.epa_offense is not None else "N/A"
+    epa_def = f"{window.epa_defense:+.3f}" if window.epa_defense is not None else "N/A"
+    lines.append(f"  - EPA/play offense: {epa_off}")
+    lines.append(f"  - EPA/play defense (allowed): {epa_def}")
+    lines.append(f"  - Points for (avg): {window.points_for_avg:.1f}")
+    lines.append(f"  - Points against (avg): {window.points_against_avg:.1f}")
+    record = f"{window.wins}-{window.losses}"
+    if window.ties:
+        record += f"-{window.ties}"
+    lines.append(f"  - Record: {record}")
+    return lines
+
+
+def _format_team_stats_section(team_name: str, team_abbr: str, result: TeamStatsResult) -> str:
+    lines = [f"### {team_name} ({team_abbr})\n"]
+
+    if result.status == "unavailable":
+        reason = result.error or "no data returned"
+        lines.append(
+            f"**UNAVAILABLE** -- nflreadpy fetch failed for this team ({reason}). "
+            "Treat rolling stats as unknown.\n"
+        )
+        return "\n".join(lines)
+
+    lines.extend(_fmt_window_stats("Last 4 Games", result.last4))
+    lines.append("")
+    lines.extend(_fmt_window_stats("Season-to-Date", result.season_to_date))
+    lines.append("")
+    return "\n".join(lines)
+
+
+def _team_performance_section(game: dict) -> str:
+    """
+    Render the full team-performance section for both teams of a game.
+
+    game["away_team_stats"] / game["home_team_stats"] are TeamStatsResult
+    objects attached by the orchestrator between injury enrichment and
+    report writing. Absent keys are treated as unavailable rather than
+    causing a KeyError, matching the injury section's pattern.
+    """
+    away_result: TeamStatsResult = game.get("away_team_stats") or _TEAM_STATS_NOT_WIRED
+    home_result: TeamStatsResult = game.get("home_team_stats") or _TEAM_STATS_NOT_WIRED
+
+    lines = ["## Team Performance\n"]
+    lines.append(_format_team_stats_section(game["away_team"], game["away_abbr"], away_result))
+    lines.append(_format_team_stats_section(game["home_team"], game["home_abbr"], home_result))
+    return "\n".join(lines)
+
+
+# ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
 
@@ -280,11 +347,15 @@ def format_game_report(game: dict) -> str:
     sections.append(_spreads_section(game["spreads"]))
     sections.append(_totals_section(game["totals"]))
 
+    # Team performance -- last-4-games and season-to-date rolling stats
+    # (EPA/play offense+defense, points for/against, win-loss record),
+    # sourced live from nflreadpy (see reporter/enrich/team_stats_adapter.py).
+    sections.append(_team_performance_section(game))
+
     # Phase 4 placeholder
     sections.append(
         "## NOT YET AVAILABLE -- Phase 4\n\n"
         "The following data will be added in Phase 4 and is absent from this report:\n\n"
-        "- **Team stats** -- recent scoring averages, offensive/defensive rankings\n"
         "- **Weather conditions** -- for outdoor venues\n"
         "- **Line movement history** -- opening line vs. current spread/total\n"
     )
