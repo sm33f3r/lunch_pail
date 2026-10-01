@@ -35,12 +35,79 @@ _POLYMARKET_EVENT_URL = "https://polymarket.com/event/{slug}"
 _SPREAD_LINE_RE = re.compile(r"^Spread\s+(.+)$", re.IGNORECASE)
 _TOTAL_LINE_RE  = re.compile(r"^O/U\s+(.+)$",    re.IGNORECASE)
 
+_STATUS_COMPLETED   = "completed"
+_STATUS_IN_PROGRESS = "in_progress"
+_STATUS_SCHEDULED   = "scheduled"
+
 
 def _extract_line_label(market: dict, pattern: re.Pattern) -> str:
     """Parse the numeric line value from a market's groupItemTitle field."""
     title = market.get("groupItemTitle") or ""
     m = pattern.match(title)
     return m.group(1) if m else title
+
+
+def get_game_status(event: dict) -> str:
+    """
+    Classify a game event's real-world status from Polymarket's own
+    event-level game-state fields ("ended", "live").
+
+    Confirmed via live recon (2026-10-02, SEA @ WAS, gameId 19496) that
+    these fields are more current than the event's "closed" flag:
+    the game had ended=True with a final score ("31-33", cross-checked
+    against nflreadpy's schedule for the same game: SEA 31 - WAS 33)
+    while the EVENT's own "closed" field was still False and only the
+    moneyline MARKET had flipped to closed=True (umaResolutionStatus
+    "resolved"). "closed" tracks market settlement, which is gated on
+    UMA oracle resolution and can lag the real-world final whistle by
+    a meaningful amount; "ended" is the sports-data feed's own record
+    of the game having finished and is not subject to that lag.
+
+    Returns "completed", "in_progress", or "scheduled". "scheduled" is
+    also the degrade-to default for any ambiguous/missing state (both
+    "ended" and "live" falsy or absent) -- per this phase's no-silent-
+    defaults rule, a game is only ever called completed or in_progress
+    when the feed says so explicitly; anything else (including a feed
+    that hasn't populated these fields yet) is treated as not-yet-
+    started rather than guessed.
+    """
+    if event.get("ended") is True:
+        return _STATUS_COMPLETED
+    if event.get("live") is True:
+        return _STATUS_IN_PROGRESS
+    return _STATUS_SCHEDULED
+
+
+def _parse_final_score(event: dict, away_abbr: str, home_abbr: str) -> dict | None:
+    """
+    Parse the event's "score" field into a small dict for the completed-
+    game label.
+
+    Confirmed live: format is "{away_score}-{home_score}" (e.g. "31-33"
+    for SEA @ WAS, matching the team ordering in parse_teams_from_event
+    and independently cross-checked against nflreadpy's
+    away_score/home_score columns for the same game).
+
+    Returns None if the field is absent or not in the expected two-number
+    format, so the completed-game label still renders (without a numeric
+    score) rather than guessing one.
+    """
+    raw = event.get("score")
+    if not raw:
+        return None
+    parts = raw.split("-")
+    if len(parts) != 2:
+        return None
+    try:
+        away_score, home_score = int(parts[0]), int(parts[1])
+    except ValueError:
+        return None
+    return {
+        "away_abbr":  away_abbr,
+        "away_score": away_score,
+        "home_abbr":  home_abbr,
+        "home_score": home_score,
+    }
 
 
 def consolidate_events_by_game_id(events: list[dict]) -> dict[int, list[dict]]:
@@ -125,6 +192,15 @@ def build_game_report_data(
     slug       = rep.get("slug", "")
     event_url  = _POLYMARKET_EVENT_URL.format(slug=slug)
 
+    # Already-played games are still reportable (see get_game_status
+    # docstring) -- never silently excluded -- but the report must say so
+    # prominently rather than rendering as an ambiguous "current" report.
+    game_status = get_game_status(rep)
+    final_score = (
+        _parse_final_score(rep, teams["away_abbr"], teams["home_abbr"])
+        if game_status == _STATUS_COMPLETED else None
+    )
+
     # Bad moneyline prices = skip the whole game (no usable primary signal).
     # A moneyline OI fetch failure is NOT the same kind of problem: prices
     # and trades are still usable, so the game still gets a report with OI
@@ -203,6 +279,8 @@ def build_game_report_data(
         "moneyline":  moneyline_data,
         "spreads":    spreads_data,
         "totals":     totals_data,
+        "game_status": game_status,
+        "final_score": final_score,
     }
 
 

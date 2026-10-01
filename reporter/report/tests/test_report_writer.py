@@ -80,6 +80,8 @@ def _sample_game(
     away_team_stats=None,
     home_team_stats=None,
     week_context=None,
+    game_status=None,
+    final_score=None,
 ) -> dict:
     if moneyline is None:
         moneyline = {
@@ -120,6 +122,8 @@ def _sample_game(
         "moneyline":  moneyline,
         "spreads":    spreads,
         "totals":     totals,
+        "game_status": game_status,
+        "final_score": final_score,
     }
 
 
@@ -595,6 +599,65 @@ class TestFormatGameReport:
         # Each trade line starts with "  - BUY"; count them
         trade_lines = [l for l in report.splitlines() if l.strip().startswith("- BUY")]
         assert len(trade_lines) <= 5
+
+
+# ---------------------------------------------------------------------------
+# Game status note -- completed/in-progress games must be labeled
+# prominently, never silently rendered as an ambiguous upcoming-game
+# report. See reporter.watcher.game_assembly.get_game_status().
+# ---------------------------------------------------------------------------
+
+class TestGameStatusNote:
+    def test_upcoming_game_unaffected_no_note(self):
+        game = _sample_game(game_status="scheduled", final_score=None)
+        report = format_game_report(game)
+        assert "GAME ALREADY COMPLETED" not in report
+        assert "GAME IN PROGRESS" not in report
+
+    def test_missing_game_status_key_unaffected(self):
+        # Callers that haven't wired this stage in (game_status absent
+        # entirely, not just None) must render exactly as before.
+        game = _sample_game()
+        del game["game_status"]
+        del game["final_score"]
+        report = format_game_report(game)
+        assert "GAME ALREADY COMPLETED" not in report
+        assert "GAME IN PROGRESS" not in report
+
+    def test_completed_game_labeled_with_score(self):
+        game = _sample_game(
+            game_status="completed",
+            final_score={"away_abbr": "BAL", "away_score": 17, "home_abbr": "DAL", "home_score": 24},
+        )
+        report = format_game_report(game)
+        assert "GAME ALREADY COMPLETED" in report
+        assert "BAL 17 - DAL 24" in report
+
+    def test_completed_game_missing_score_still_labeled(self):
+        game = _sample_game(game_status="completed", final_score=None)
+        report = format_game_report(game)
+        assert "GAME ALREADY COMPLETED" in report
+        assert "unavailable" in report
+
+    def test_in_progress_game_labeled(self):
+        game = _sample_game(game_status="in_progress", final_score=None)
+        report = format_game_report(game)
+        assert "GAME IN PROGRESS" in report
+        assert "GAME ALREADY COMPLETED" not in report
+
+    def test_completed_note_is_near_top_not_buried(self):
+        game = _sample_game(
+            game_status="completed",
+            final_score={"away_abbr": "BAL", "away_score": 17, "home_abbr": "DAL", "home_score": 24},
+        )
+        report = format_game_report(game)
+        header_pos = report.index("# Baltimore Ravens")
+        note_pos = report.index("GAME ALREADY COMPLETED")
+        injury_pos = report.index("## Injury Report")
+        # The status note must come before the injury report section, and
+        # close to the header -- "prominent," not buried after other content.
+        assert header_pos < note_pos < injury_pos
+        assert note_pos - header_pos < 300
 
 
 # ---------------------------------------------------------------------------

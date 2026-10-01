@@ -148,6 +148,53 @@ def _totals_section(totals: list[dict]) -> str:
 
 
 # ---------------------------------------------------------------------------
+# Game status note -- completed/in-progress games are still reportable
+# (never silently excluded, consistent with this phase's other honesty
+# labels -- stale injury data, possibly-incomplete ESPN lists) but must say
+# so prominently so a finished game is never mistaken for an ambiguous
+# "current" upcoming-game report. See game_assembly.get_game_status().
+# ---------------------------------------------------------------------------
+
+def _game_status_note(game: dict) -> str | None:
+    """
+    Render the game-status note, or None when the game is still scheduled
+    (nothing to flag).
+
+    game.get("game_status", "scheduled") treats a missing key as
+    "scheduled" -- the same "absent key means nothing to flag" pattern
+    used for away_injuries/home_injuries -- so callers that haven't wired
+    this stage in (e.g. direct/standalone test fixtures) render unchanged.
+    """
+    status = game.get("game_status", "scheduled")
+
+    if status == "completed":
+        score = game.get("final_score")
+        if score:
+            score_str = (
+                f"{score['away_abbr']} {score['away_score']} - "
+                f"{score['home_abbr']} {score['home_score']}"
+            )
+        else:
+            score_str = "unavailable"
+        return (
+            "**NOTE: GAME ALREADY COMPLETED** -- Final score: "
+            f"{score_str}. This game has finished. The market, injury, "
+            "and team-performance data below are historical (captured "
+            "as of this report's generation time), not forward-looking "
+            "for betting purposes.\n"
+        )
+
+    if status == "in_progress":
+        return (
+            "**NOTE: GAME IN PROGRESS** -- this game has already kicked "
+            "off. The market, injury, and team-performance data below "
+            "may not reflect the current live game state.\n"
+        )
+
+    return None
+
+
+# ---------------------------------------------------------------------------
 # Injury report section
 # ---------------------------------------------------------------------------
 
@@ -382,6 +429,13 @@ def format_game_report(game: dict) -> str:
 
     # Header
     sections.append(f"# {away} @ {home}\n\n**Date:** {date}  \n**24h Volume:** ${volume:,.2f}\n")
+
+    # Game status note -- immediately after the header, before anything
+    # else, so a completed/in-progress game is never mistaken for a
+    # normal upcoming-game report.
+    status_note = _game_status_note(game)
+    if status_note:
+        sections.append(status_note)
 
     # Injury report -- prominent, immediately after header. This is the
     # standing injury-report-gate: both teams' injury designations must

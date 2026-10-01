@@ -21,6 +21,7 @@ os.environ.setdefault("POLLING_INTERVAL_SECONDS", "300")
 from reporter.watcher.game_assembly import (  # noqa: E402
     build_game_report_data,
     consolidate_events_by_game_id,
+    get_game_status,
     select_representative_event,
 )
 
@@ -155,6 +156,59 @@ _FULL_MARKETS_EVENT = _game_event(
     ],
 )
 
+# A genuinely upcoming game -- no status fields populated by the feed yet
+# (matches the real shape of a not-yet-started event, confirmed live).
+_UPCOMING_EVENT = _game_event(
+    game_id=600,
+    slug="nfl-phi-chi-2026-10-05",
+    title="Eagles vs. Bears",
+    volume_24hr=40000.0,
+    markets=[_moneyline_market(market_id="ml6", condition_id="0xml6")],
+)
+_UPCOMING_EVENT["ended"] = None
+_UPCOMING_EVENT["live"] = None
+_UPCOMING_EVENT["score"] = None
+
+# A confirmed-completed game -- shape confirmed live (2026-10-02, SEA @ WAS,
+# gameId 19496): ended=True with a final score while "closed" was still
+# False (closed/ended lag is the whole point of this status check).
+_COMPLETED_EVENT = _game_event(
+    game_id=700,
+    slug="nfl-phi-chi-2026-09-28",
+    title="Eagles vs. Bears",
+    volume_24hr=40000.0,
+    markets=[_moneyline_market(market_id="ml7", condition_id="0xml7", prices=["0", "1"])],
+)
+_COMPLETED_EVENT["ended"] = True
+_COMPLETED_EVENT["live"] = False
+_COMPLETED_EVENT["score"] = "17-24"
+
+# A game in progress -- live=True, ended not yet True.
+_IN_PROGRESS_EVENT = _game_event(
+    game_id=800,
+    slug="nfl-phi-chi-2026-09-28",
+    title="Eagles vs. Bears",
+    volume_24hr=40000.0,
+    markets=[_moneyline_market(market_id="ml8", condition_id="0xml8")],
+)
+_IN_PROGRESS_EVENT["ended"] = None
+_IN_PROGRESS_EVENT["live"] = True
+_IN_PROGRESS_EVENT["score"] = "10-7"
+
+# Ambiguous: score populated but neither ended nor live is explicitly True
+# (e.g. feed lag / partial update) -- must degrade to "scheduled", not
+# guess "completed" or "in_progress".
+_AMBIGUOUS_EVENT = _game_event(
+    game_id=900,
+    slug="nfl-phi-chi-2026-09-28",
+    title="Eagles vs. Bears",
+    volume_24hr=40000.0,
+    markets=[_moneyline_market(market_id="ml9", condition_id="0xml9")],
+)
+_AMBIGUOUS_EVENT["ended"] = None
+_AMBIGUOUS_EVENT["live"] = None
+_AMBIGUOUS_EVENT["score"] = "10-7"
+
 
 # ---------------------------------------------------------------------------
 # consolidate_events_by_game_id
@@ -274,6 +328,83 @@ class TestBuildGameReportData:
             mock_emd.return_value = {"prices": {}, "open_interest": 0.0, "recent_trades": []}
             result = build_game_report_data(100, [_ML_EVENT, _PROP_EVENT])
         assert result["volume"] == 20000.0
+
+
+# ---------------------------------------------------------------------------
+# get_game_status -- pure classification of event-level ended/live fields
+# ---------------------------------------------------------------------------
+
+class TestGetGameStatus:
+    def test_upcoming_game_is_scheduled(self):
+        assert get_game_status(_UPCOMING_EVENT) == "scheduled"
+
+    def test_ended_true_is_completed(self):
+        assert get_game_status(_COMPLETED_EVENT) == "completed"
+
+    def test_live_true_is_in_progress(self):
+        assert get_game_status(_IN_PROGRESS_EVENT) == "in_progress"
+
+    def test_ambiguous_state_degrades_to_scheduled(self):
+        # Score present but neither ended nor live is explicitly True --
+        # must not guess "completed".
+        assert get_game_status(_AMBIGUOUS_EVENT) == "scheduled"
+
+    def test_ended_wins_over_live_if_both_set(self):
+        event = {**_IN_PROGRESS_EVENT, "ended": True, "live": True}
+        assert get_game_status(event) == "completed"
+
+    def test_missing_fields_entirely_is_scheduled(self):
+        assert get_game_status({"id": "x", "gameId": 1}) == "scheduled"
+
+
+# ---------------------------------------------------------------------------
+# build_game_report_data -- game_status/final_score integration
+# ---------------------------------------------------------------------------
+
+class TestGameStatusIntegration:
+    def test_upcoming_game_status_and_score(self):
+        with patch("reporter.watcher.game_assembly.extract_market_data") as mock_emd:
+            mock_emd.return_value = {"prices": {"Away": 0.5, "Home": 0.5}, "open_interest": 1.0, "recent_trades": []}
+            result = build_game_report_data(600, [_UPCOMING_EVENT])
+        assert result is not None
+        assert result["game_status"] == "scheduled"
+        assert result["final_score"] is None
+
+    def test_completed_game_still_reportable_not_excluded(self):
+        # A completed game's moneyline is fully resolved (prices ["0","1"])
+        # but still has real historical volume -- it must still pass
+        # through the volume filter and produce a report, per the
+        # label-don't-exclude design decision.
+        with patch("reporter.watcher.game_assembly.extract_market_data") as mock_emd:
+            mock_emd.return_value = {"prices": {"Away": 0.0, "Home": 1.0}, "open_interest": 0.0, "recent_trades": []}
+            result = build_game_report_data(700, [_COMPLETED_EVENT])
+        assert result is not None
+        assert result["game_status"] == "completed"
+
+    def test_completed_game_final_score_parsed(self):
+        with patch("reporter.watcher.game_assembly.extract_market_data") as mock_emd:
+            mock_emd.return_value = {"prices": {"Away": 0.0, "Home": 1.0}, "open_interest": 0.0, "recent_trades": []}
+            result = build_game_report_data(700, [_COMPLETED_EVENT])
+        assert result["final_score"] == {
+            "away_abbr": "PHI", "away_score": 17,
+            "home_abbr": "CHI", "home_score": 24,
+        }
+
+    def test_in_progress_game_status_no_score_claimed_as_final(self):
+        with patch("reporter.watcher.game_assembly.extract_market_data") as mock_emd:
+            mock_emd.return_value = {"prices": {"Away": 0.5, "Home": 0.5}, "open_interest": 1.0, "recent_trades": []}
+            result = build_game_report_data(800, [_IN_PROGRESS_EVENT])
+        assert result["game_status"] == "in_progress"
+        # final_score is only populated for "completed" -- an in-progress
+        # score is not a final result and must not be rendered as one.
+        assert result["final_score"] is None
+
+    def test_ambiguous_game_degrades_to_scheduled_no_final_score(self):
+        with patch("reporter.watcher.game_assembly.extract_market_data") as mock_emd:
+            mock_emd.return_value = {"prices": {"Away": 0.5, "Home": 0.5}, "open_interest": 1.0, "recent_trades": []}
+            result = build_game_report_data(900, [_AMBIGUOUS_EVENT])
+        assert result["game_status"] == "scheduled"
+        assert result["final_score"] is None
 
 
 # ---------------------------------------------------------------------------
