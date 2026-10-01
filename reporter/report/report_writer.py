@@ -187,6 +187,14 @@ def _format_team_injury_section(team_name: str, team_abbr: str, result: InjuryRe
         lines.append("_Practice status is not available from this source._")
         if result.as_of:
             lines.append(f"_As of: {result.as_of}_")
+        if result.possibly_incomplete:
+            raw_count = len(result.records) + result.failed_count
+            lines.append(
+                f"_NOTE: this team's injury list may be incomplete -- the ESPN "
+                f"feed returned exactly {raw_count} records, which may indicate "
+                f"a feed-side limit. Designations beyond this list, if any, are "
+                f"not visible here._"
+            )
 
     if result.source == "nflverse":
         if result.nflverse_season is not None and result.nflverse_week is not None:

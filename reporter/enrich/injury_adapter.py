@@ -68,6 +68,26 @@ _ESPN_LEAGUE_TIMEOUT = 60   # league payload is ~8.7 MB
 _NFLVERSE_TIMEOUT    = 15
 _MAX_WORKERS         = 8    # concurrent $ref fetches per team (legacy path only)
 
+# The league-wide endpoint (site.api.espn.com/.../nfl/injuries) returns at
+# most this many records per team block, confirmed live on 2026-10-01: all
+# 32 teams returned exactly 25 records (800 total / 32), and a per-team
+# core-API comparison (sports.core.api.espn.com, full pagination) against
+# 5 teams with heavy injury loads (BAL 62, DAL 61, GB 64, PIT 60, NYG 60
+# real records) confirmed the league feed silently drops the rest. Records
+# are sorted by `date` descending and the drop is a positional cutoff --
+# oldest entries cut first.
+#
+# CONFIRMED HARMFUL: this is not just trimming stale "Active" noise. GB,
+# DAL, and PIT all had genuine non-Active designations beyond position 25
+# -- e.g. GB's Josh Jacobs, Jordon Riley, and Luke Musgrave were all status
+# "Out" but ranked 26+ (cut from the league feed) because their status
+# hadn't been re-dated recently relative to the team's other injury
+# traffic. A long-term "Out"/"Injured Reserve" player whose entry goes
+# stale in date terms can fall off the list even though their designation
+# is still fully current. This is exactly the misinformation risk this
+# flag exists to catch -- do not treat hitting the cap as "probably fine."
+_LEAGUE_INJURY_CAP = 25
+
 _DEFAULT_CACHE_TTL_SECONDS = 300
 
 
@@ -186,15 +206,25 @@ class InjuryResult:
     stale:
       True when source="nflverse" and nflverse_week is not the current NFL
       week -- i.e. this data should not be treated as current-week data.
+
+    possibly_incomplete:
+      True when source="espn" (league-wide path) and this team's raw record
+      count hit _LEAGUE_INJURY_CAP (25) -- the league feed may be silently
+      truncating this team's list. This is distinct from "unavailable" (no
+      data at all) and "no_designations" (fetch succeeded, team genuinely
+      has none): here we have data, but cannot promise it is everything.
+      Never set for the legacy per-team ESPN path (which paginates fully)
+      or nflverse (full season CSV, no per-team cap).
     """
     records: list[InjuryRecord]
     source:  str    # "espn" | "nflverse" | "unavailable"
     status:  str    # "ok" | "no_designations" | "unavailable"
-    failed_count:     int = 0
-    as_of:            str | None = None
-    nflverse_season:  int | None = None
-    nflverse_week:    int | None = None
-    stale:            bool = False
+    failed_count:        int = 0
+    as_of:               str | None = None
+    nflverse_season:     int | None = None
+    nflverse_week:       int | None = None
+    stale:               bool = False
+    possibly_incomplete: bool = False
 
     @property
     def is_unavailable(self) -> bool:
@@ -693,12 +723,18 @@ def get_team_injuries(team_abbr: str, week: int | None = None) -> InjuryResult:
         try:
             records, failed_count, as_of = fetch_espn_league_injuries(team_abbr)
             status = "ok" if records else "no_designations"
+            # Raw block size = parsed records + the ones that failed to parse
+            # but were still present in the team's block. The cap applies to
+            # what the feed returned, not to what we successfully parsed.
+            raw_count = len(records) + failed_count
+            possibly_incomplete = raw_count == _LEAGUE_INJURY_CAP
             return InjuryResult(
                 records=records,
                 source="espn",
                 status=status,
                 failed_count=failed_count,
                 as_of=as_of,
+                possibly_incomplete=possibly_incomplete,
             )
         except (ESPNError, ValueError) as exc:
             print(f"[injury_adapter] ESPN (league-wide) failed for {team_abbr!r}: {exc} — falling back to nflverse.")

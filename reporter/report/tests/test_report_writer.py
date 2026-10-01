@@ -235,6 +235,47 @@ class TestFormatGameReport:
         game_failed = _sample_game(away_injuries=with_failures)
         assert format_game_report(game_complete) != format_game_report(game_failed)
 
+    def test_injury_report_possibly_incomplete_renders_note(self):
+        rec = InjuryRecord(
+            player_name="Test Player", position="WR", designation="Active",
+            practice_status=None, injury_type=None, source="espn", updated_at=None,
+        )
+        result = InjuryResult(
+            records=[rec] * 25, source="espn", status="ok",
+            possibly_incomplete=True,
+        )
+        game = _sample_game(away_injuries=result)
+        report = format_game_report(game)
+        assert "may be incomplete" in report
+        assert "25 records" in report
+
+    def test_injury_report_not_possibly_incomplete_no_note(self):
+        rec = InjuryRecord(
+            player_name="Test Player", position="WR", designation="Active",
+            practice_status=None, injury_type=None, source="espn", updated_at=None,
+        )
+        result = InjuryResult(
+            records=[rec], source="espn", status="ok",
+            possibly_incomplete=False,
+        )
+        game = _sample_game(away_injuries=result)
+        report = format_game_report(game)
+        assert "may be incomplete" not in report
+
+    def test_injury_report_possibly_incomplete_distinct_from_unavailable_and_no_designations(self):
+        unavailable = InjuryResult(records=[], source="unavailable", status="unavailable")
+        no_designations = InjuryResult(records=[], source="espn", status="no_designations")
+        incomplete = InjuryResult(
+            records=[InjuryRecord("A", "WR", "Active", None, None, "espn", None)] * 25,
+            source="espn", status="ok", possibly_incomplete=True,
+        )
+        report_unavailable = format_game_report(_sample_game(away_injuries=unavailable))
+        report_no_designations = format_game_report(_sample_game(away_injuries=no_designations))
+        report_incomplete = format_game_report(_sample_game(away_injuries=incomplete))
+        assert "may be incomplete" not in report_unavailable
+        assert "may be incomplete" not in report_no_designations
+        assert "may be incomplete" in report_incomplete
+
     def test_injury_report_nflverse_states_season_and_week(self):
         result = InjuryResult(
             records=[], source="nflverse", status="no_designations",

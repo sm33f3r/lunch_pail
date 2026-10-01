@@ -609,6 +609,72 @@ class TestGetTeamInjuries:
         assert result.records is not None
         assert isinstance(result.records, list)
 
+    # -- possibly_incomplete: league-feed per-team cap detection --
+
+    def _make_records(self, n: int) -> list[InjuryRecord]:
+        return [
+            InjuryRecord(f"Player {i}", "WR", "Active", PRACTICE_STATUS_UNAVAILABLE,
+                         None, "espn", None)
+            for i in range(n)
+        ]
+
+    def test_possibly_incomplete_true_at_cap(self):
+        records = self._make_records(25)
+        with patch("reporter.enrich.injury_adapter.fetch_espn_league_injuries",
+                   return_value=(records, 0, "2026-09-28T14:32:00Z")):
+            result = get_team_injuries("BAL")
+        assert result.possibly_incomplete is True
+
+    def test_possibly_incomplete_true_at_cap_accounting_for_failed_records(self):
+        """Raw block size (parsed + failed) hits the cap even if some
+        records in the block failed to parse -- the cap is a property of
+        what the feed sent, not of what we successfully parsed."""
+        records = self._make_records(23)
+        with patch("reporter.enrich.injury_adapter.fetch_espn_league_injuries",
+                   return_value=(records, 2, "2026-09-28T14:32:00Z")):
+            result = get_team_injuries("BAL")
+        assert result.possibly_incomplete is True
+
+    def test_possibly_incomplete_false_below_cap(self):
+        records = self._make_records(24)
+        with patch("reporter.enrich.injury_adapter.fetch_espn_league_injuries",
+                   return_value=(records, 0, "2026-09-28T14:32:00Z")):
+            result = get_team_injuries("BAL")
+        assert result.possibly_incomplete is False
+
+    def test_possibly_incomplete_false_for_no_designations(self):
+        with patch("reporter.enrich.injury_adapter.fetch_espn_league_injuries",
+                   return_value=([], 0, "2026-09-28T14:32:00Z")):
+            result = get_team_injuries("BAL")
+        assert result.possibly_incomplete is False
+        assert result.status == "no_designations"
+
+    def test_possibly_incomplete_false_for_nflverse_fallback_even_at_25(self):
+        """The cap is an ESPN-league-feed artifact. nflverse pulls the full
+        season CSV with no per-team cap, so hitting 25 there is coincidence,
+        not a feed-side limit, and must not be flagged."""
+        nflverse_records = [
+            InjuryRecord(f"Player {i}", "WR", "Active", "Full Participation in Practice",
+                         None, "nflverse", None)
+            for i in range(25)
+        ]
+        with patch("reporter.enrich.injury_adapter.fetch_espn_league_injuries",
+                   side_effect=ESPNError("down")), \
+             patch("reporter.enrich.injury_adapter.fetch_nflverse_injuries_with_meta",
+                   return_value=(nflverse_records, 2026, 3)):
+            result = get_team_injuries("BAL")
+        assert result.source == "nflverse"
+        assert result.possibly_incomplete is False
+
+    def test_possibly_incomplete_false_for_legacy_per_team_even_at_25(self):
+        """The legacy per-team path paginates fully (no 25-record cap), so
+        hitting 25 there must not be flagged either."""
+        records = self._make_records(25)
+        with patch("reporter.enrich.injury_adapter._legacy_per_team_enabled", return_value=True), \
+             patch("reporter.enrich.injury_adapter.fetch_espn_injuries", return_value=records):
+            result = get_team_injuries("BAL")
+        assert result.possibly_incomplete is False
+
 
 # ---------------------------------------------------------------------------
 # Abbreviation override mapping (LA → ESPN 14, WAS → ESPN 28)
