@@ -18,7 +18,7 @@ os.environ.setdefault("REPORT_OUTPUT_DIR", "/tmp/reporter_test")
 os.environ.setdefault("POLLING_INTERVAL_SECONDS", "300")
 
 from reporter.enrich.injury_adapter import InjuryRecord, InjuryResult  # noqa: E402
-from reporter.enrich.team_stats_adapter import TeamStatsResult, WindowStats  # noqa: E402
+from reporter.enrich.team_stats_adapter import TeamStatsResult, WeekContext, WindowStats  # noqa: E402
 from reporter.report.report_writer import (  # noqa: E402
     format_game_report,
     write_all_reports,
@@ -79,6 +79,7 @@ def _sample_game(
     home_injuries=None,
     away_team_stats=None,
     home_team_stats=None,
+    week_context=None,
 ) -> dict:
     if moneyline is None:
         moneyline = {
@@ -112,6 +113,7 @@ def _sample_game(
         "home_injuries": home_injuries,
         "away_team_stats": away_team_stats,
         "home_team_stats": home_team_stats,
+        "week_context": week_context,
         "event_slug": f"nfl-{away_abbr.lower()}-{home_abbr.lower()}-{game_date}",
         "event_url":  f"https://polymarket.com/event/nfl-{away_abbr.lower()}-{home_abbr.lower()}-{game_date}",
         "volume":     volume,
@@ -269,6 +271,70 @@ class TestFormatGameReport:
         )
         game = _sample_game(away_injuries=result)
         report = format_game_report(game)
+        assert "WARNING" not in report
+
+    # -- Game-relative staleness note (schedule-driven, source-independent) --
+
+    def test_game_relative_note_fires_for_future_game(self):
+        """Game is week 7; current real week is 3 -- ESPN data (always
+        current-week) may be stale relative to this specific game."""
+        ctx = WeekContext(season=2026, current_week=3, game_week=7, found=True)
+        game = _sample_game(week_context=ctx)  # default injuries are ESPN, not stale
+        report = format_game_report(game)
+        assert "NOTE" in report
+        assert "4 week(s) out" in report
+        assert "season 2026 week 7" in report
+        assert "current week 3" in report
+
+    def test_game_relative_note_absent_for_current_week_game(self):
+        ctx = WeekContext(season=2026, current_week=3, game_week=3, found=True)
+        game = _sample_game(week_context=ctx)
+        report = format_game_report(game)
+        assert "NOTE" not in report
+        assert "week(s) out" not in report
+
+    def test_game_relative_note_absent_when_week_context_missing(self):
+        """No silent defaults: when the schedule lookup couldn't produce an
+        answer (week_context is None), no claim is rendered either way."""
+        game = _sample_game(week_context=None)
+        report = format_game_report(game)
+        assert "NOTE" not in report
+        assert "week(s) out" not in report
+
+    def test_game_relative_note_does_not_replace_nflverse_warning(self):
+        """Future game (ESPN designations) + nflverse fallback stale data on
+        the OTHER team: both warnings must render, distinctly -- neither
+        replaces or merges with the other."""
+        ctx = WeekContext(season=2026, current_week=3, game_week=7, found=True)
+        nflverse_stale = InjuryResult(
+            records=[], source="nflverse", status="no_designations",
+            nflverse_season=2026, nflverse_week=2, stale=True,
+        )
+        game = _sample_game(
+            week_context=ctx,
+            away_injuries=_ok_injury_result("espn"),
+            home_injuries=nflverse_stale,
+        )
+        report = format_game_report(game)
+        # The game-relative note (game-level, source-independent).
+        assert "4 week(s) out" in report
+        assert "ESPN designations reflect the current week" in report
+        # The existing nflverse-specific warning (team-level, source-specific).
+        assert "NOT current-week data" in report
+        # They are two distinct lines, not merged into one message.
+        note_line = next(l for l in report.splitlines() if "week(s) out" in l)
+        warning_line = next(l for l in report.splitlines() if "NOT current-week data" in l)
+        assert note_line != warning_line
+        assert "NOT current-week data" not in note_line
+        assert "week(s) out" not in warning_line
+
+    def test_game_relative_note_and_current_week_espn_means_no_warnings_at_all(self):
+        """Current-week game + ESPN (the common case) -- no warning of
+        either kind."""
+        ctx = WeekContext(season=2026, current_week=3, game_week=3, found=True)
+        game = _sample_game(week_context=ctx)  # default injuries are ESPN
+        report = format_game_report(game)
+        assert "NOTE" not in report
         assert "WARNING" not in report
 
     def test_injury_report_shortcomment_skipped_when_bare_repeat(self):

@@ -15,7 +15,12 @@ os.environ.setdefault("REPORT_OUTPUT_DIR", "/tmp/reporter_test")
 os.environ.setdefault("POLLING_INTERVAL_SECONDS", "300")
 
 from reporter.enrich.injury_adapter import InjuryResult  # noqa: E402
-from reporter.enrich.team_stats_adapter import TeamStatsResult, WindowStats  # noqa: E402
+from reporter.enrich.team_stats_adapter import (  # noqa: E402
+    NflreadpyError,
+    TeamStatsResult,
+    WeekContext,
+    WindowStats,
+)
 from reporter.orchestrator import run_forever, run_once  # noqa: E402
 
 
@@ -35,6 +40,22 @@ _OK_TEAM_STATS = TeamStatsResult(
     team_abbr="KC", status="ok", season=2026,
     last4=_OK_WINDOW, season_to_date=_OK_WINDOW,
 )
+
+# Current-week game by default so existing tests (which don't care about
+# week context) don't pick up an unexpected staleness note.
+_OK_WEEK_CONTEXT = WeekContext(season=2026, current_week=3, game_week=3, found=True)
+
+
+@pytest.fixture(autouse=True)
+def _patch_week_context():
+    """
+    Every test in this module gets a real-game, non-stale week context by
+    default -- this stage makes a schedule (nflreadpy) call in production,
+    and tests must stay offline. Tests that specifically exercise the
+    week-context wiring override this with their own nested patch.
+    """
+    with patch("reporter.orchestrator.get_game_week_context", return_value=_OK_WEEK_CONTEXT):
+        yield
 
 
 class TestRunOnce:
@@ -194,6 +215,63 @@ class TestRunOnce:
     def test_game_assembly_failure_does_not_crash_run_once(self):
         with patch("reporter.orchestrator.get_reportable_games", side_effect=RuntimeError("assembly down")):
             run_once()  # must not raise
+
+    # ------------------------------------------------------------------
+    # Week-context wiring (game-relative injury staleness check)
+    # ------------------------------------------------------------------
+
+    def test_fetches_week_context_for_every_game(self):
+        games = [_game("KC", "MIA"), _game("PHI", "NYG")]
+        with patch("reporter.orchestrator.get_reportable_games", return_value=games), \
+             patch("reporter.orchestrator.get_team_injuries", return_value=_OK_RESULT), \
+             patch("reporter.orchestrator.get_team_rolling_stats", return_value=_OK_TEAM_STATS), \
+             patch("reporter.orchestrator.get_game_week_context", return_value=_OK_WEEK_CONTEXT) as mock_fetch, \
+             patch("reporter.orchestrator.write_all_reports", return_value=[]):
+            run_once()
+        mock_fetch.assert_has_calls(
+            [call("KC", "2026-09-28"), call("PHI", "2026-09-28")], any_order=True
+        )
+        assert mock_fetch.call_count == 2
+
+    def test_week_context_attached_to_games_passed_to_write_all_reports(self):
+        games = [_game("KC", "MIA")]
+        future_ctx = WeekContext(season=2026, current_week=3, game_week=7, found=True)
+        with patch("reporter.orchestrator.get_reportable_games", return_value=games), \
+             patch("reporter.orchestrator.get_team_injuries", return_value=_OK_RESULT), \
+             patch("reporter.orchestrator.get_team_rolling_stats", return_value=_OK_TEAM_STATS), \
+             patch("reporter.orchestrator.get_game_week_context", return_value=future_ctx), \
+             patch("reporter.orchestrator.write_all_reports", return_value=[]) as mock_write:
+            run_once()
+        written_games = mock_write.call_args[0][0]
+        assert written_games[0]["week_context"] is future_ctx
+
+    def test_week_context_none_when_schedule_fetch_fails(self):
+        """No silent defaults: a schedule fetch failure must attach None,
+        never a guessed/default WeekContext -- must not crash the cycle."""
+        games = [_game("KC", "MIA")]
+        with patch("reporter.orchestrator.get_reportable_games", return_value=games), \
+             patch("reporter.orchestrator.get_team_injuries", return_value=_OK_RESULT), \
+             patch("reporter.orchestrator.get_team_rolling_stats", return_value=_OK_TEAM_STATS), \
+             patch("reporter.orchestrator.get_game_week_context",
+                   side_effect=NflreadpyError("nflreadpy down")), \
+             patch("reporter.orchestrator.write_all_reports", return_value=[]) as mock_write:
+            run_once()  # must not raise
+        written_games = mock_write.call_args[0][0]
+        assert written_games[0]["week_context"] is None
+
+    def test_week_context_none_when_game_not_found_in_schedule(self):
+        """found=False (e.g. bye-week/date mismatch) must attach None, not
+        a WeekContext that looks like a real answer."""
+        games = [_game("KC", "MIA")]
+        not_found_ctx = WeekContext(season=2026, current_week=3, game_week=None, found=False)
+        with patch("reporter.orchestrator.get_reportable_games", return_value=games), \
+             patch("reporter.orchestrator.get_team_injuries", return_value=_OK_RESULT), \
+             patch("reporter.orchestrator.get_team_rolling_stats", return_value=_OK_TEAM_STATS), \
+             patch("reporter.orchestrator.get_game_week_context", return_value=not_found_ctx), \
+             patch("reporter.orchestrator.write_all_reports", return_value=[]) as mock_write:
+            run_once()
+        written_games = mock_write.call_args[0][0]
+        assert written_games[0]["week_context"] is None
 
 
 class TestRunForever:

@@ -110,6 +110,22 @@ class TeamStatsResult:
         return self.status == "unavailable"
 
 
+@dataclass(frozen=True)
+class WeekContext:
+    """
+    Schedule-driven week identity for one game, returned by
+    get_game_week_context(). Shared by injury_adapter.py and
+    team_stats_adapter.py so both use one real schedule-based answer for
+    "what week is it" instead of two separate approximations.
+    """
+    season:       int
+    current_week: int    # see _real_current_week() for the exact definition
+    game_week:    int | None   # the target game's own week; None if not resolved
+    found:        bool         # False when game_week could not be matched in the
+                                # schedule (e.g. a bye-week/date mismatch) -- callers
+                                # must treat this as "lookup failed," not "current week"
+
+
 def _unavailable(team_abbr: str, season: int | None, error: str) -> TeamStatsResult:
     return TeamStatsResult(
         team_abbr=team_abbr, status="unavailable", season=season,
@@ -185,6 +201,160 @@ def fetch_pbp_df(season: int) -> pl.DataFrame:
 
 def _current_season() -> int:
     return int(nflreadpy.get_current_season())
+
+
+# ---------------------------------------------------------------------------
+# Schedule-driven week lookup -- shared with injury_adapter.py
+# ---------------------------------------------------------------------------
+
+def _real_current_week(schedules_df: pl.DataFrame, season: int, today: date | None = None) -> int:
+    """
+    Schedule-driven "what week is it right now," used as the single source
+    of truth for injury-data staleness checks (both the nflverse-vs-current-
+    week check and the game-relative check).
+
+    Definition: the highest week number that contains at least one game
+    whose `gameday` is on or before today. This is chosen over a fixed
+    days-since-kickoff heuristic (the old _current_nfl_week() in
+    injury_adapter.py) because it is schedule-accurate across bye weeks and
+    irregular scheduling (Thanksgiving, Christmas, international games,
+    the Week 18 flex, etc.): it reflects the real games nflreadpy has on
+    the books rather than assuming every week is exactly 7 days after the
+    last. It also matches ESPN's own current-week semantics reasonably
+    well -- ESPN's league injury report flips to a new week's designations
+    once that week's first game has kicked off, not at a fixed offset.
+
+    Before the season's first game (no game has started yet), returns 1 --
+    there is no "started" week, and week 1 is the only sane answer.
+    """
+    if today is None:
+        today = datetime.now(timezone.utc).date()
+    today_str = today.strftime("%Y-%m-%d")
+    season_games = schedules_df.filter(pl.col("season") == season)
+    started = season_games.filter(pl.col("gameday") <= today_str)
+    if started.shape[0] == 0:
+        return 1
+    return int(started["week"].max())
+
+
+def get_current_week(season: int | None = None) -> int:
+    """
+    Schedule-driven current NFL week (see _real_current_week for the exact
+    definition). Public entry point for callers (e.g. injury_adapter.py)
+    that need "the current week" without reference to any specific game.
+
+    Raises:
+        NflreadpyError: if the schedules fetch itself fails. Callers that
+        need a non-raising path should catch this and fall back to a
+        date-based heuristic, logging that the fallback happened.
+    """
+    if season is None:
+        season = _current_season()
+    schedules_df = fetch_schedules_df(season)
+    return _real_current_week(schedules_df, season)
+
+
+# Exact date-string equality between Polymarket's listed game date and
+# nflreadpy's `gameday` is too brittle: confirmed live, a late-kickoff game
+# (e.g. CLE (home) vs PIT (away)) can be one calendar day apart between the
+# two sources, most likely a UTC/local-time boundary effect. A single
+# team's games are never closer together than 4 days in a real NFL season
+# (verified against live schedule data -- the tightest real gap is a short
+# Sunday-to-Thursday week), so a 1-day window on ONE team's schedule can
+# never accidentally match the wrong game. Team pair alone (no date anchor
+# at all) is NOT safe: divisional rematches mean two teams can meet twice
+# in a season -- verified live, the closest real rematch gap is 14 days,
+# comfortably outside this window, which is exactly why the window
+# approach (not "team pair alone") is used here.
+_GAME_DATE_MATCH_WINDOW_DAYS = 1
+
+
+def _parse_iso_date(value: str) -> date | None:
+    try:
+        return datetime.strptime(value, "%Y-%m-%d").date()
+    except (ValueError, TypeError):
+        return None
+
+
+def get_game_week_context(
+    team_abbr: str,
+    game_date: str | date | datetime | None,
+    season: int | None = None,
+) -> WeekContext:
+    """
+    Resolve both the target game's actual week and the current real week,
+    both from nflreadpy's schedule data -- the same source fetch_schedules_df()
+    already uses for completed-games lookups, so callers get one real
+    schedule-driven answer instead of a separate date heuristic per adapter.
+
+    Args:
+        team_abbr:  either team in the target game (home or away); used to
+                    find its row in the schedule.
+        game_date:  the target game's own date (YYYY-MM-DD string, or a
+                    date/datetime object). Matched against the schedule's
+                    `gameday` within _GAME_DATE_MATCH_WINDOW_DAYS day(s),
+                    not exact equality -- see _GAME_DATE_MATCH_WINDOW_DAYS
+                    for why exact matching is unsafe and the window is.
+        season:     season year. Defaults to nflreadpy.get_current_season().
+
+    Returns:
+        WeekContext. found=False (game_week=None) when the game can't be
+        matched in the schedule even within the date window -- e.g. an
+        unparseable date, a bye week, or genuine data lag between
+        Polymarket and nflreadpy. Per the "no silent defaults" rule,
+        callers MUST treat found=False as "schedule lookup failed" and
+        degrade to a date heuristic rather than assuming game_week equals
+        current_week. When multiple candidate rows fall within the
+        window (should not happen given the 4-day real minimum gap
+        between one team's games, but handled defensively), the closest
+        by date wins.
+
+    Raises:
+        NflreadpyError: if the schedules fetch itself fails.
+    """
+    if season is None:
+        season = _current_season()
+
+    if isinstance(game_date, datetime):
+        game_date_obj: date | None = game_date.date()
+    elif isinstance(game_date, date):
+        game_date_obj = game_date
+    elif game_date:
+        game_date_obj = _parse_iso_date(game_date)
+    else:
+        game_date_obj = None
+
+    schedules_df = fetch_schedules_df(season)
+    current_week = _real_current_week(schedules_df, season)
+
+    game_week: int | None = None
+    found = False
+    if game_date_obj is not None:
+        team_games = schedules_df.filter(
+            (pl.col("season") == season)
+            & ((pl.col("home_team") == team_abbr) | (pl.col("away_team") == team_abbr))
+        )
+        best_week: int | None = None
+        best_diff: int | None = None
+        for row in team_games.select(["week", "gameday"]).to_dicts():
+            row_date = _parse_iso_date(row["gameday"])
+            if row_date is None:
+                continue
+            diff = abs((row_date - game_date_obj).days)
+            if diff <= _GAME_DATE_MATCH_WINDOW_DAYS and (best_diff is None or diff < best_diff):
+                best_diff = diff
+                best_week = int(row["week"])
+        if best_week is not None:
+            game_week = best_week
+            found = True
+            if best_diff:
+                print(
+                    f"[team_stats_adapter] get_game_week_context: {team_abbr!r} "
+                    f"game date {game_date!r} matched schedule gameday {best_diff} "
+                    f"day(s) off (week {game_week}) -- Polymarket/nflreadpy date drift."
+                )
+
+    return WeekContext(season=season, current_week=current_week, game_week=game_week, found=found)
 
 
 def _completed_games_for_team(

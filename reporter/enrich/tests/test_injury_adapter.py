@@ -32,6 +32,7 @@ from reporter.enrich.injury_adapter import (
     fetch_nflverse_injuries_with_meta,
     get_team_injuries,
 )
+from reporter.enrich.team_stats_adapter import NflreadpyError
 
 _FIXTURES = Path(__file__).resolve().parent.parent / "fixtures"
 
@@ -540,12 +541,14 @@ class TestGetTeamInjuries:
         assert result.nflverse_week == 3
 
     def test_nflverse_fallback_stale_when_week_not_current(self):
+        """Schedule-driven current-week path (get_current_week), not the
+        date-heuristic fallback -- these are now different things."""
         nflverse_records = _nflverse_ok_records()
         with patch("reporter.enrich.injury_adapter.fetch_espn_league_injuries",
                    side_effect=ESPNError("down")), \
              patch("reporter.enrich.injury_adapter.fetch_nflverse_injuries_with_meta",
                    return_value=(nflverse_records, 2026, 3)), \
-             patch("reporter.enrich.injury_adapter._current_nfl_week", return_value=9):
+             patch("reporter.enrich.injury_adapter.get_current_week", return_value=9):
             result = get_team_injuries("BAL")
         assert result.stale is True
 
@@ -555,9 +558,26 @@ class TestGetTeamInjuries:
                    side_effect=ESPNError("down")), \
              patch("reporter.enrich.injury_adapter.fetch_nflverse_injuries_with_meta",
                    return_value=(nflverse_records, 2026, 3)), \
-             patch("reporter.enrich.injury_adapter._current_nfl_week", return_value=3):
+             patch("reporter.enrich.injury_adapter.get_current_week", return_value=3):
             result = get_team_injuries("BAL")
         assert result.stale is False
+
+    def test_nflverse_fallback_stale_check_degrades_to_date_heuristic_on_schedule_failure(self):
+        """If the schedule-driven current-week lookup itself fails (nflreadpy
+        down), the stale check must degrade to the old date heuristic rather
+        than crashing or silently treating the data as not-stale -- and it
+        must log that the fallback happened (see _resolve_current_week)."""
+        nflverse_records = _nflverse_ok_records()
+        with patch("reporter.enrich.injury_adapter.fetch_espn_league_injuries",
+                   side_effect=ESPNError("down")), \
+             patch("reporter.enrich.injury_adapter.fetch_nflverse_injuries_with_meta",
+                   return_value=(nflverse_records, 2026, 3)), \
+             patch("reporter.enrich.injury_adapter.get_current_week",
+                   side_effect=NflreadpyError("nflreadpy down")), \
+             patch("reporter.enrich.injury_adapter._current_nfl_week", return_value=9) as mock_heuristic:
+            result = get_team_injuries("BAL")
+        mock_heuristic.assert_called_once()
+        assert result.stale is True
 
     # -- Both sources fail --
 

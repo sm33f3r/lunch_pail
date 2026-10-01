@@ -45,6 +45,8 @@ from datetime import datetime, timedelta, timezone
 
 import requests
 
+from reporter.enrich.team_stats_adapter import NflreadpyError, get_current_week
+
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
@@ -228,11 +230,12 @@ def _current_nfl_week(season: int | None = None) -> int:
     Best-effort current NFL week number, clamped to [1, 18].
 
     This is a date-based approximation (regular season == 18 weeks starting
-    the first Thursday of September) used only to flag nflverse data as
-    stale when it is not for the current week. It is not fed a schedule, so
-    it can be off by one around bye weeks/holidays; that's acceptable for a
-    staleness *warning*, which only needs to catch "this is old data," not
-    pinpoint the exact week.
+    the first Thursday of September). It is NOT the primary path any more --
+    _resolve_current_week() below prefers the schedule-driven answer from
+    team_stats_adapter.get_current_week(). This heuristic is kept only as a
+    degrade-to path for when the nflreadpy schedules fetch itself fails, so
+    a network hiccup never crashes injury enrichment; it is not fed a real
+    schedule, so it can be off by one around bye weeks/holidays.
     """
     now = datetime.now(timezone.utc)
     if season is None:
@@ -242,6 +245,26 @@ def _current_nfl_week(season: int | None = None) -> int:
         return 1
     week = (now - kickoff).days // 7 + 1
     return max(1, min(week, 18))
+
+
+def _resolve_current_week(season: int | None = None) -> int:
+    """
+    Schedule-driven current NFL week (team_stats_adapter.get_current_week),
+    falling back to the old date-based heuristic (_current_nfl_week) if the
+    nflreadpy schedules fetch itself fails. Never raises -- a network
+    hiccup must not abort injury enrichment -- but always logs when the
+    degraded path is used, per the "no silent defaults" rule: callers must
+    be able to tell the difference between a real schedule-based answer and
+    a coarse fallback from the logs.
+    """
+    try:
+        return get_current_week(season)
+    except NflreadpyError as exc:
+        print(
+            f"[injury_adapter] schedule-driven current week lookup failed "
+            f"({exc}); falling back to date heuristic."
+        )
+        return _current_nfl_week(season)
 
 
 def _espn_team_id(abbr: str) -> int:
@@ -684,7 +707,7 @@ def get_team_injuries(team_abbr: str, week: int | None = None) -> InjuryResult:
     try:
         records, nfl_season, target_week = fetch_nflverse_injuries_with_meta(team_abbr, week=week)
         status = "ok" if records else "no_designations"
-        stale = target_week is not None and target_week != _current_nfl_week(nfl_season)
+        stale = target_week is not None and target_week != _resolve_current_week(nfl_season)
         return InjuryResult(
             records=records,
             source="nflverse",

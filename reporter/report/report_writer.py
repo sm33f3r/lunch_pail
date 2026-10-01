@@ -19,7 +19,7 @@ from pathlib import Path
 
 from reporter.config import settings
 from reporter.enrich.injury_adapter import InjuryRecord, InjuryResult
-from reporter.enrich.team_stats_adapter import TeamStatsResult, WindowStats
+from reporter.enrich.team_stats_adapter import TeamStatsResult, WeekContext, WindowStats
 from reporter.watcher.game_assembly import get_reportable_games
 
 # Pattern used to identify report files written by a previous run so stale
@@ -224,6 +224,39 @@ def _format_team_injury_section(team_name: str, team_abbr: str, result: InjuryRe
     return "\n".join(lines)
 
 
+def _game_relative_staleness_note(week_ctx: WeekContext | None) -> str | None:
+    """
+    Render the game-relative injury staleness note, or None when it doesn't
+    apply.
+
+    This is distinct from (and can coexist with) the per-team nflverse
+    "NOT current-week data" warning in _format_team_injury_section: that
+    one flags when the nflverse FALLBACK's own week isn't the current week;
+    this one flags when the GAME ITSELF is weeks away from "now," which
+    matters regardless of source -- ESPN's league injury payload is always
+    current-week data, so a future game (caught by the volume filter well
+    ahead of kickoff) gets designations that may be stale relative to that
+    specific game's actual date even though ESPN itself isn't "stale" in
+    any general sense.
+
+    week_ctx is None when the schedule lookup couldn't produce a
+    trustworthy answer (fetch failure or game not found) -- per the "no
+    silent defaults" rule, that means no claim is made either way, so no
+    note is rendered rather than guessing.
+    """
+    if week_ctx is None or week_ctx.game_week is None:
+        return None
+    if week_ctx.game_week == week_ctx.current_week:
+        return None
+    gap = abs(week_ctx.game_week - week_ctx.current_week)
+    return (
+        f"**NOTE:** This game is {gap} week(s) out from the current injury data "
+        f"(game: season {week_ctx.season} week {week_ctx.game_week}; current week "
+        f"{week_ctx.current_week}). ESPN designations reflect the current week, "
+        "not necessarily gameday.\n"
+    )
+
+
 def _injury_report_section(game: dict) -> str:
     """
     Render the full injury report section for both teams of a game.
@@ -238,11 +271,20 @@ def _injury_report_section(game: dict) -> str:
     timestamp, and nflverse sections state the season/week actually
     returned plus a staleness warning when that week isn't current --
     report generation time is never a substitute for either.
+
+    game["week_context"] (a WeekContext or None, attached by the
+    orchestrator) drives a separate, game-level staleness note that fires
+    regardless of source -- see _game_relative_staleness_note().
     """
     away_result: InjuryResult = game.get("away_injuries") or _INJURIES_NOT_WIRED
     home_result: InjuryResult = game.get("home_injuries") or _INJURIES_NOT_WIRED
 
     lines = ["## Injury Report\n"]
+
+    note = _game_relative_staleness_note(game.get("week_context"))
+    if note:
+        lines.append(note)
+
     lines.append(_format_team_injury_section(game["away_team"], game["away_abbr"], away_result))
     lines.append(_format_team_injury_section(game["home_team"], game["home_abbr"], home_result))
     return "\n".join(lines)

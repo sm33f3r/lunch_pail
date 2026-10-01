@@ -19,13 +19,17 @@ import pytest
 from reporter.enrich.team_stats_adapter import (
     NflreadpyError,
     TeamStatsResult,
+    WeekContext,
     WindowStats,
     _completed_games_for_team,
     _epa_window_stats,
+    _real_current_week,
     _reset_caches,
     _window_stats,
     fetch_pbp_df,
     fetch_schedules_df,
+    get_current_week,
+    get_game_week_context,
     get_team_rolling_stats,
 )
 
@@ -407,6 +411,174 @@ class TestGetTeamRollingStats:
         # Every stat-bearing field must be None, never 0.0/0 standing in for missing data.
         assert result.last4 is None
         assert result.season_to_date is None
+
+
+# ---------------------------------------------------------------------------
+# _real_current_week / get_current_week / get_game_week_context
+# -- schedule-driven week lookup shared with injury_adapter.py
+# ---------------------------------------------------------------------------
+
+class TestRealCurrentWeek:
+    def test_before_season_returns_week_1(self):
+        sched = _load_schedules_fixture()
+        assert _real_current_week(sched, 2026, today=date(2026, 1, 1)) == 1
+
+    def test_returns_max_started_week(self):
+        sched = _load_schedules_fixture()
+        assert _real_current_week(sched, 2026, today=date(2026, 9, 27)) == 3
+
+    def test_returns_max_started_week_well_after_last_known_game(self):
+        """Fixture only has week 3 -- there's nothing to bump the answer to,
+        so it stays at 3 even long after those games."""
+        sched = _load_schedules_fixture()
+        assert _real_current_week(sched, 2026, today=date(2026, 12, 1)) == 3
+
+    def test_unstarted_future_week_does_not_count_as_current(self):
+        """A scheduled-but-not-yet-started week 4 game must not make
+        _real_current_week report week 4 before its own gameday arrives --
+        this is the core bye-week/future-game-accuracy guarantee that a
+        fixed days-since-kickoff heuristic can't provide."""
+        sched = _load_schedules_fixture()
+        future_week4 = pl.DataFrame([{
+            "game_id": "2026_04_PHI_XXX", "season": 2026, "game_type": "REG",
+            "week": 4, "gameday": "2026-10-05", "weekday": "Sunday",
+            "away_team": "PHI", "away_score": None, "home_team": "XXX", "home_score": None,
+            "result": None, "total": None, "away_moneyline": -150, "home_moneyline": 130,
+        }])
+        combined = pl.concat([sched, future_week4], how="diagonal_relaxed")
+        assert _real_current_week(combined, 2026, today=date(2026, 9, 29)) == 3
+        # Once that week's gameday has arrived, it becomes current.
+        assert _real_current_week(combined, 2026, today=date(2026, 10, 5)) == 4
+
+
+class TestGetCurrentWeek:
+    def test_composes_fetch_and_real_current_week(self):
+        sched = _load_schedules_fixture()
+        with patch("reporter.enrich.team_stats_adapter.nflreadpy.load_schedules", return_value=sched), \
+             patch("reporter.enrich.team_stats_adapter._real_current_week", return_value=3) as mock_real:
+            result = get_current_week(season=2026)
+        assert result == 3
+        mock_real.assert_called_once()
+
+    def test_propagates_nflreadpy_error(self):
+        with patch("reporter.enrich.team_stats_adapter.nflreadpy.load_schedules",
+                   side_effect=RuntimeError("down")):
+            with pytest.raises(NflreadpyError):
+                get_current_week(season=2026)
+
+
+class TestGetGameWeekContext:
+    def test_found_true_resolves_game_week_from_schedule(self):
+        sched = _load_schedules_fixture()
+        with patch("reporter.enrich.team_stats_adapter.nflreadpy.load_schedules", return_value=sched), \
+             patch("reporter.enrich.team_stats_adapter._real_current_week", return_value=3):
+            ctx = get_game_week_context("PHI", "2026-09-28", season=2026)
+        assert isinstance(ctx, WeekContext)
+        assert ctx.found is True
+        assert ctx.season == 2026
+        assert ctx.game_week == 3
+        assert ctx.current_week == 3
+
+    def test_accepts_date_object_not_just_string(self):
+        """Same coercion as _completed_games_for_team -- gameday is a
+        String column, so a date/datetime before_date must be coerced
+        before comparison or Polars raises InvalidOperationError."""
+        sched = _load_schedules_fixture()
+        with patch("reporter.enrich.team_stats_adapter.nflreadpy.load_schedules", return_value=sched), \
+             patch("reporter.enrich.team_stats_adapter._real_current_week", return_value=3):
+            ctx = get_game_week_context("PHI", date(2026, 9, 28), season=2026)
+        assert ctx.found is True
+        assert ctx.game_week == 3
+
+    def test_not_found_when_date_mismatch(self):
+        sched = _load_schedules_fixture()
+        with patch("reporter.enrich.team_stats_adapter.nflreadpy.load_schedules", return_value=sched), \
+             patch("reporter.enrich.team_stats_adapter._real_current_week", return_value=3):
+            ctx = get_game_week_context("PHI", "2099-01-01", season=2026)
+        assert ctx.found is False
+        assert ctx.game_week is None
+
+    def test_not_found_when_team_unknown(self):
+        sched = _load_schedules_fixture()
+        with patch("reporter.enrich.team_stats_adapter.nflreadpy.load_schedules", return_value=sched), \
+             patch("reporter.enrich.team_stats_adapter._real_current_week", return_value=3):
+            ctx = get_game_week_context("BUF", "2026-09-28", season=2026)
+        assert ctx.found is False
+
+    def test_date_drift_matched_within_window(self):
+        """Regression: production logged 'game not found' for PIT @ CLE
+        because nflreadpy's gameday (2026-10-01) and Polymarket's listed
+        game date (2026-10-02) differed by one day -- a UTC/local-time
+        boundary effect around a late kickoff. Exact date-string equality
+        missed this; the date-window match must not."""
+        sched = _load_schedules_fixture()
+        pit_cle = pl.DataFrame([{
+            "game_id": "2026_04_PIT_CLE", "season": 2026, "game_type": "REG",
+            "week": 4, "gameday": "2026-10-01", "weekday": "Thursday",
+            "away_team": "PIT", "away_score": None, "home_team": "CLE", "home_score": None,
+            "result": None, "total": None, "away_moneyline": -150, "home_moneyline": 130,
+        }])
+        combined = pl.concat([sched, pit_cle], how="diagonal_relaxed")
+        with patch("reporter.enrich.team_stats_adapter.nflreadpy.load_schedules", return_value=combined), \
+             patch("reporter.enrich.team_stats_adapter._real_current_week", return_value=3):
+            ctx_away = get_game_week_context("PIT", "2026-10-02", season=2026)
+            ctx_home = get_game_week_context("CLE", "2026-10-02", season=2026)
+        assert ctx_away.found is True
+        assert ctx_away.game_week == 4
+        assert ctx_home.found is True
+        assert ctx_home.game_week == 4
+
+    def test_date_drift_beyond_window_not_found(self):
+        """The window has a limit -- it fixes the real 1-day drift, it
+        doesn't turn into team-pair-only matching. A 3-day-off date must
+        still report found=False rather than guessing."""
+        sched = _load_schedules_fixture()
+        pit_cle = pl.DataFrame([{
+            "game_id": "2026_04_PIT_CLE", "season": 2026, "game_type": "REG",
+            "week": 4, "gameday": "2026-10-01", "weekday": "Thursday",
+            "away_team": "PIT", "away_score": None, "home_team": "CLE", "home_score": None,
+            "result": None, "total": None, "away_moneyline": -150, "home_moneyline": 130,
+        }])
+        combined = pl.concat([sched, pit_cle], how="diagonal_relaxed")
+        with patch("reporter.enrich.team_stats_adapter.nflreadpy.load_schedules", return_value=combined), \
+             patch("reporter.enrich.team_stats_adapter._real_current_week", return_value=3):
+            ctx = get_game_week_context("PIT", "2026-10-04", season=2026)
+        assert ctx.found is False
+        assert ctx.game_week is None
+
+    def test_divisional_rematch_disambiguated_by_date_window(self):
+        """Two teams can meet twice in a season (verified live: the
+        closest real rematch gap is 14 days), so team-pair-alone (no date
+        anchor) would be ambiguous. The date window must still resolve
+        each query to the CORRECT meeting, not just the first row found."""
+        sched = _load_schedules_fixture()
+        rematches = pl.DataFrame([
+            {
+                "game_id": "2026_05_PHI_CHI2", "season": 2026, "game_type": "REG",
+                "week": 5, "gameday": "2026-10-12", "weekday": "Sunday",
+                "away_team": "PHI", "away_score": None, "home_team": "CHI", "home_score": None,
+                "result": None, "total": None, "away_moneyline": -150, "home_moneyline": 130,
+            },
+            {
+                "game_id": "2026_15_CHI_PHI", "season": 2026, "game_type": "REG",
+                "week": 15, "gameday": "2026-12-20", "weekday": "Sunday",
+                "away_team": "CHI", "away_score": None, "home_team": "PHI", "home_score": None,
+                "result": None, "total": None, "away_moneyline": -150, "home_moneyline": 130,
+            },
+        ])
+        combined = pl.concat([sched, rematches], how="diagonal_relaxed")
+        with patch("reporter.enrich.team_stats_adapter.nflreadpy.load_schedules", return_value=combined), \
+             patch("reporter.enrich.team_stats_adapter._real_current_week", return_value=3):
+            ctx_early = get_game_week_context("PHI", "2026-10-13", season=2026)  # 1 day off week-5 meeting
+            ctx_late = get_game_week_context("PHI", "2026-12-19", season=2026)   # 1 day off week-15 meeting
+        assert ctx_early.game_week == 5
+        assert ctx_late.game_week == 15
+
+    def test_propagates_nflreadpy_error(self):
+        with patch("reporter.enrich.team_stats_adapter.nflreadpy.load_schedules",
+                   side_effect=RuntimeError("down")):
+            with pytest.raises(NflreadpyError):
+                get_game_week_context("PHI", "2026-09-28", season=2026)
 
 
 # ---------------------------------------------------------------------------

@@ -13,7 +13,13 @@ import time
 
 from reporter.config import settings
 from reporter.enrich.injury_adapter import InjuryResult, get_team_injuries
-from reporter.enrich.team_stats_adapter import TeamStatsResult, get_team_rolling_stats
+from reporter.enrich.team_stats_adapter import (
+    NflreadpyError,
+    TeamStatsResult,
+    WeekContext,
+    get_game_week_context,
+    get_team_rolling_stats,
+)
 from reporter.report.report_writer import write_all_reports
 from reporter.watcher.game_assembly import get_reportable_games
 
@@ -56,6 +62,32 @@ def _fetch_team_rolling_stats(team_abbr: str, before_date: str) -> TeamStatsResu
         return _TEAM_STATS_FETCH_FAILED
 
 
+def _fetch_week_context(team_abbr: str, game_date: str) -> WeekContext | None:
+    """
+    Fetch the schedule-driven week context for one game, never raising.
+
+    Returns None when the schedule lookup can't produce a trustworthy
+    answer -- either the nflreadpy schedules fetch itself failed, or the
+    game couldn't be matched in schedule data (e.g. a date mismatch). Per
+    the "no silent defaults" rule, callers must treat None as "can't
+    determine game-relative staleness" and simply omit the check, never as
+    "this game is current."
+    """
+    try:
+        ctx = get_game_week_context(team_abbr, game_date)
+    except NflreadpyError as exc:
+        print(f"[reporter] week context fetch failed for {team_abbr!r}: {exc}", flush=True)
+        return None
+    if not ctx.found:
+        print(
+            f"[reporter] week context: game not found in schedule for "
+            f"{team_abbr!r} on {game_date!r}; skipping game-relative staleness check.",
+            flush=True,
+        )
+        return None
+    return ctx
+
+
 def _attach_injuries(games: list[dict]) -> list[dict]:
     """Attach away_injuries/home_injuries InjuryResult objects to each game."""
     for game in games:
@@ -74,6 +106,20 @@ def _attach_team_stats(games: list[dict]) -> list[dict]:
         before_date = game.get("game_date") or ""
         game["away_team_stats"] = _fetch_team_rolling_stats(game["away_abbr"], before_date)
         game["home_team_stats"] = _fetch_team_rolling_stats(game["home_abbr"], before_date)
+    return games
+
+
+def _attach_week_context(games: list[dict]) -> list[dict]:
+    """
+    Attach a WeekContext (or None) to each game, used by the report writer
+    for the game-relative injury staleness check -- flagging when the
+    target game's own week differs from the current real week, regardless
+    of whether injuries came from ESPN or nflverse (see
+    reporter.enrich.team_stats_adapter.get_game_week_context).
+    """
+    for game in games:
+        game_date = game.get("game_date") or ""
+        game["week_context"] = _fetch_week_context(game["away_abbr"], game_date)
     return games
 
 
@@ -103,6 +149,10 @@ def run_once() -> None:
         print("[reporter] Stage: team stats fetch starting...", flush=True)
         games = _attach_team_stats(games)
         print(f"[reporter] Stage: team stats fetch done -- {len(games)} game(s).", flush=True)
+
+        print("[reporter] Stage: week context fetch starting...", flush=True)
+        games = _attach_week_context(games)
+        print(f"[reporter] Stage: week context fetch done -- {len(games)} game(s).", flush=True)
 
         print("[reporter] Stage: report writing starting...", flush=True)
         written = write_all_reports(games)
