@@ -44,3 +44,7 @@ reporter/enrich/ROLLING_STATS_RECON*.md
 # Weather enrichment recon narrative (same convention as injury recon)
 WEATHER_RECON*.md
 reporter/enrich/WEATHER_RECON*.md
+
+# Situational-context recon narrative (same convention as injury recon)
+SITUATIONAL_RECON*.md
+reporter/enrich/SITUATIONAL_RECON*.md

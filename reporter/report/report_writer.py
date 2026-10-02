@@ -19,6 +19,7 @@ from pathlib import Path
 
 from reporter.config import settings
 from reporter.enrich.injury_adapter import InjuryRecord, InjuryResult
+from reporter.enrich.situational_context import SituationalContext
 from reporter.enrich.team_stats_adapter import TeamStatsResult, WeekContext, WindowStats
 from reporter.enrich.weather_adapter import _FORECAST_HORIZON_DAYS, WeatherResult
 from reporter.watcher.game_assembly import get_reportable_games
@@ -46,6 +47,14 @@ _TEAM_STATS_NOT_WIRED = TeamStatsResult(
 # haven't wired the weather stage in yet).
 _WEATHER_NOT_WIRED = WeatherResult(
     team_abbr="", status="unavailable", error="weather stage not wired in",
+)
+
+# Used when a game dict has no "situational_context" key at all (e.g.
+# callers that haven't wired the situational-context stage in yet).
+_SITUATIONAL_NOT_WIRED = SituationalContext(
+    status="unavailable", away_abbr="", home_abbr="", season=None,
+    week=None, week_found=False, away_rest=None, home_rest=None, divisional=None,
+    error="situational context stage not wired in",
 )
 
 
@@ -467,6 +476,73 @@ def _format_weather_section(result: WeatherResult) -> str:
 
 
 # ---------------------------------------------------------------------------
+# Situational context section
+# ---------------------------------------------------------------------------
+
+def _fmt_rest_days(team_name: str, result) -> str:
+    """Render one team's rest-day line. Each failure/no-data state is
+    explicit -- never a numeric default standing in for missing data."""
+    if result is None:
+        return f"  - {team_name}: UNAVAILABLE -- situational context not wired in"
+    if result.status == "season_opener":
+        return f"  - {team_name}: season opener -- no prior game this season to measure rest from"
+    if result.status == "unavailable":
+        reason = result.error or "no data returned"
+        return f"  - {team_name}: UNAVAILABLE -- {reason}"
+    return f"  - {team_name}: {result.days} day(s) rest"
+
+
+def _format_situational_context_section(game: dict) -> str:
+    """
+    Render the full situational-context section: home/away, rest-day
+    differential, divisional-game flag, and week of season.
+
+    game["situational_context"] is a SituationalContext object attached
+    by the orchestrator. An absent key is treated as unavailable rather
+    than causing a KeyError, matching the injury/team-stats/weather
+    sections' pattern.
+    """
+    result: SituationalContext = game.get("situational_context") or _SITUATIONAL_NOT_WIRED
+
+    away_name = f"{game['away_team']} ({game['away_abbr']})"
+    home_name = f"{game['home_team']} ({game['home_abbr']})"
+
+    lines = ["## Situational Context\n"]
+    lines.append(f"**Home/Away:** {game['away_team']} ({game['away_abbr']}) @ {game['home_team']} ({game['home_abbr']})\n")
+
+    if result.status == "unavailable":
+        reason = result.error or "no data returned"
+        lines.append(f"**UNAVAILABLE** -- schedule data could not be fetched ({reason}). Rest days, divisional flag, and week of season are unknown.\n")
+        return "\n".join(lines)
+
+    if result.week_found and result.week is not None:
+        lines.append(f"**Week of season:** {result.season} week {result.week}\n")
+    else:
+        lines.append("**Week of season:** UNAVAILABLE -- could not match this game to schedule data.\n")
+
+    lines.append("**Rest days:**")
+    lines.append(_fmt_rest_days(away_name, result.away_rest))
+    lines.append(_fmt_rest_days(home_name, result.home_rest))
+    if result.away_rest is not None and result.home_rest is not None \
+            and result.away_rest.status == "ok" and result.home_rest.status == "ok":
+        diff = result.home_rest.days - result.away_rest.days
+        lines.append(f"  - Differential: {diff:+d} day(s) (home relative to away)")
+    else:
+        lines.append("  - Differential: UNAVAILABLE -- one or both teams' rest days could not be determined")
+    lines.append("")
+
+    divisional = result.divisional
+    if divisional is not None and divisional.status == "ok":
+        flag = "YES" if divisional.is_divisional else "NO"
+        lines.append(f"**Divisional matchup:** {flag}\n")
+    else:
+        reason = (divisional.error if divisional is not None else None) or "no data returned"
+        lines.append(f"**Divisional matchup:** UNAVAILABLE -- {reason}\n")
+
+    return "\n".join(lines)
+
+
+# ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
 
@@ -523,12 +599,10 @@ def format_game_report(game: dict) -> str:
     weather_result: WeatherResult = game.get("weather") or _WEATHER_NOT_WIRED
     sections.append(_format_weather_section(weather_result))
 
-    # Phase 4 placeholder -- remaining not-yet-built items
-    sections.append(
-        "## NOT YET AVAILABLE -- Phase 4\n\n"
-        "The following data will be added in Phase 4 and is absent from this report:\n\n"
-        "- **Line movement history** -- opening line vs. current spread/total\n"
-    )
+    # Situational context -- home/away, rest-day differential, divisional-
+    # game flag, week of season (see reporter/enrich/situational_context.py).
+    # This is the last Phase 4 enrichment layer; no placeholder follows it.
+    sections.append(_format_situational_context_section(game))
 
     # Footer
     sections.append(f"---\n\n_Generated: {now_utc}_  \n_Source: {url}_\n")

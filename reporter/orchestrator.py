@@ -20,6 +20,7 @@ from reporter.enrich.team_stats_adapter import (
     get_game_week_context,
     get_team_rolling_stats,
 )
+from reporter.enrich.situational_context import SituationalContext, get_situational_context
 from reporter.enrich.weather_adapter import WeatherResult, get_game_weather
 from reporter.report.report_writer import write_all_reports
 from reporter.watcher.game_assembly import get_reportable_games
@@ -31,6 +32,11 @@ _TEAM_STATS_FETCH_FAILED = TeamStatsResult(
 )
 _WEATHER_FETCH_FAILED = WeatherResult(
     team_abbr="", status="unavailable", error="unexpected exception in orchestrator",
+)
+_SITUATIONAL_FETCH_FAILED = SituationalContext(
+    status="unavailable", away_abbr="", home_abbr="", season=None,
+    week=None, week_found=False, away_rest=None, home_rest=None, divisional=None,
+    error="unexpected exception in orchestrator",
 )
 
 
@@ -109,6 +115,25 @@ def _fetch_game_weather(team_abbr: str, game_date: str, kickoff_utc: str | None)
         return _WEATHER_FETCH_FAILED
 
 
+def _fetch_situational_context(away_abbr: str, home_abbr: str, game_date: str) -> SituationalContext:
+    """
+    Fetch one game's situational context (home/away, rest days,
+    divisional flag, week of season), never raising.
+
+    get_situational_context() already degrades to status="unavailable" on
+    nflreadpy fetch failures (and individually marks each sub-piece
+    unavailable/season_opener on a per-piece lookup miss); this wrapper
+    additionally guards against an unexpected exception so a single
+    game's situational lookup can never abort that game's report or
+    other games' reports.
+    """
+    try:
+        return get_situational_context(away_abbr, home_abbr, game_date)
+    except Exception as exc:
+        print(f"[reporter] situational context fetch failed for {away_abbr!r}@{home_abbr!r}: {exc}", flush=True)
+        return _SITUATIONAL_FETCH_FAILED
+
+
 def _attach_injuries(games: list[dict]) -> list[dict]:
     """Attach away_injuries/home_injuries InjuryResult objects to each game."""
     for game in games:
@@ -156,6 +181,19 @@ def _attach_weather(games: list[dict]) -> list[dict]:
     return games
 
 
+def _attach_situational_context(games: list[dict]) -> list[dict]:
+    """
+    Attach a situational_context SituationalContext to each game: home/
+    away, rest-day differential, divisional-game flag, and week of season.
+    """
+    for game in games:
+        game_date = game.get("game_date") or ""
+        game["situational_context"] = _fetch_situational_context(
+            game["away_abbr"], game["home_abbr"], game_date
+        )
+    return games
+
+
 def run_once() -> None:
     """
     Execute one full pipeline cycle: game assembly, then injury enrichment,
@@ -190,6 +228,10 @@ def run_once() -> None:
         print("[reporter] Stage: weather fetch starting...", flush=True)
         games = _attach_weather(games)
         print(f"[reporter] Stage: weather fetch done -- {len(games)} game(s).", flush=True)
+
+        print("[reporter] Stage: situational context fetch starting...", flush=True)
+        games = _attach_situational_context(games)
+        print(f"[reporter] Stage: situational context fetch done -- {len(games)} game(s).", flush=True)
 
         print("[reporter] Stage: report writing starting...", flush=True)
         written = write_all_reports(games)

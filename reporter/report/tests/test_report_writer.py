@@ -18,6 +18,11 @@ os.environ.setdefault("REPORT_OUTPUT_DIR", "/tmp/reporter_test")
 os.environ.setdefault("POLLING_INTERVAL_SECONDS", "300")
 
 from reporter.enrich.injury_adapter import InjuryRecord, InjuryResult  # noqa: E402
+from reporter.enrich.situational_context import (  # noqa: E402
+    DivisionalGameResult,
+    RestDaysResult,
+    SituationalContext,
+)
 from reporter.enrich.team_stats_adapter import TeamStatsResult, WeekContext, WindowStats  # noqa: E402
 from reporter.enrich.weather_adapter import WeatherResult  # noqa: E402
 from reporter.report.report_writer import (  # noqa: E402
@@ -84,6 +89,7 @@ def _sample_game(
     game_status=None,
     final_score=None,
     weather=None,
+    situational_context=None,
 ) -> dict:
     if moneyline is None:
         moneyline = {
@@ -127,6 +133,7 @@ def _sample_game(
         "game_status": game_status,
         "final_score": final_score,
         "weather": weather,
+        "situational_context": situational_context,
     }
 
 
@@ -464,7 +471,7 @@ class TestFormatGameReport:
         game = _sample_game(away_team_stats=insufficient, home_team_stats=insufficient)
         report = format_game_report(game)
         assert "INSUFFICIENT DATA" in report
-        team_perf = report.split("## Team Performance")[1].split("## NOT YET AVAILABLE")[0]
+        team_perf = report.split("## Team Performance")[1].split("## Situational Context")[0]
         assert "0.0" not in team_perf
         assert "EPA/play" not in team_perf
 
@@ -540,9 +547,11 @@ class TestFormatGameReport:
         assert "## Totals" in report
 
     def test_phase4_section_present(self):
+        # The Phase 4 placeholder is gone -- situational context (the last
+        # Phase 4 enrichment layer) replaced it entirely.
         report = format_game_report(_GAME)
-        assert "NOT YET AVAILABLE" in report
-        assert "Phase 4" in report
+        assert "## Situational Context" in report
+        assert "## NOT YET AVAILABLE" not in report
 
     def test_phase4_lists_injury_designations(self):
         report = format_game_report(_GAME)
@@ -676,7 +685,7 @@ class TestWeatherSection:
         report = format_game_report(game)
         assert "Indoor stadium" in report
         assert "Ford Field" in report
-        assert "UNAVAILABLE" not in report.split("## Weather")[1].split("## NOT YET AVAILABLE")[0]
+        assert "UNAVAILABLE" not in report.split("## Weather")[1].split("## Situational Context")[0]
 
     def test_ok_renders_real_values(self):
         weather = WeatherResult(
@@ -700,13 +709,13 @@ class TestWeatherSection:
         report = format_game_report(game)
         assert "FORECAST NOT YET AVAILABLE" in report
         assert "not a failure" in report
-        assert "UNAVAILABLE" not in report.split("## Weather")[1].split("## NOT YET AVAILABLE")[0]
+        assert "UNAVAILABLE" not in report.split("## Weather")[1].split("## Situational Context")[0]
 
     def test_unavailable_renders_distinct_failure_marker(self):
         weather = WeatherResult(team_abbr="DAL", status="unavailable", error="network timeout")
         game = _sample_game(weather=weather)
         report = format_game_report(game)
-        weather_section = report.split("## Weather")[1].split("## NOT YET AVAILABLE")[0]
+        weather_section = report.split("## Weather")[1].split("## Situational Context")[0]
         assert "UNAVAILABLE" in weather_section
         assert "network timeout" in weather_section
         assert "FORECAST NOT YET AVAILABLE" not in weather_section
@@ -719,8 +728,8 @@ class TestWeatherSection:
         failure = WeatherResult(team_abbr="DAL", status="unavailable", error="boom")
         horizon_report = format_game_report(_sample_game(weather=horizon))
         failure_report = format_game_report(_sample_game(weather=failure))
-        horizon_section = horizon_report.split("## Weather")[1].split("## NOT YET AVAILABLE")[0]
-        failure_section = failure_report.split("## Weather")[1].split("## NOT YET AVAILABLE")[0]
+        horizon_section = horizon_report.split("## Weather")[1].split("## Situational Context")[0]
+        failure_section = failure_report.split("## Weather")[1].split("## Situational Context")[0]
         assert "UNAVAILABLE" not in horizon_section
         assert "FORECAST NOT YET AVAILABLE" not in failure_section
 
@@ -729,6 +738,95 @@ class TestWeatherSection:
         del game["weather"]
         report = format_game_report(game)
         assert "## Weather" in report
+
+
+# ---------------------------------------------------------------------------
+# Situational context section -- home/away, rest days, divisional flag,
+# week of season. See reporter.enrich.situational_context.
+# ---------------------------------------------------------------------------
+
+class TestSituationalContextSection:
+    def test_ok_renders_week_rest_and_divisional(self):
+        ctx = SituationalContext(
+            status="ok", away_abbr="BAL", home_abbr="DAL", season=2026,
+            week=3, week_found=True,
+            away_rest=RestDaysResult(status="ok", days=7),
+            home_rest=RestDaysResult(status="ok", days=10),
+            divisional=DivisionalGameResult(status="ok", is_divisional=False),
+        )
+        game = _sample_game(situational_context=ctx)
+        report = format_game_report(game)
+        assert "## Situational Context" in report
+        assert "**Week of season:** 2026 week 3" in report
+        assert "7 day(s) rest" in report
+        assert "10 day(s) rest" in report
+        assert "+3 day(s)" in report  # home_rest - away_rest, home relative to away
+        assert "**Divisional matchup:** NO" in report
+
+    def test_divisional_matchup_renders_yes(self):
+        ctx = SituationalContext(
+            status="ok", away_abbr="CIN", home_abbr="PIT", season=2026,
+            week=3, week_found=True,
+            away_rest=RestDaysResult(status="ok", days=7),
+            home_rest=RestDaysResult(status="ok", days=7),
+            divisional=DivisionalGameResult(status="ok", is_divisional=True),
+        )
+        game = _sample_game(situational_context=ctx)
+        report = format_game_report(game)
+        assert "**Divisional matchup:** YES" in report
+
+    def test_season_opener_rendered_explicitly_not_as_zero(self):
+        ctx = SituationalContext(
+            status="ok", away_abbr="NE", home_abbr="SEA", season=2026,
+            week=1, week_found=True,
+            away_rest=RestDaysResult(status="season_opener"),
+            home_rest=RestDaysResult(status="season_opener"),
+            divisional=DivisionalGameResult(status="ok", is_divisional=False),
+        )
+        game = _sample_game(situational_context=ctx)
+        report = format_game_report(game)
+        assert "season opener" in report
+        assert "0 day(s) rest" not in report
+
+    def test_week_not_found_marks_pieces_unavailable_not_silent(self):
+        ctx = SituationalContext(
+            status="ok", away_abbr="BAL", home_abbr="DAL", season=2026,
+            week=None, week_found=False,
+            away_rest=RestDaysResult(status="unavailable", error="game week not resolved; cannot locate prior game"),
+            home_rest=RestDaysResult(status="unavailable", error="game week not resolved; cannot locate prior game"),
+            divisional=DivisionalGameResult(status="unavailable", error="game week not resolved; cannot match schedule row"),
+        )
+        game = _sample_game(situational_context=ctx)
+        report = format_game_report(game)
+        section = report.split("## Situational Context")[1]
+        assert "UNAVAILABLE" in section
+        assert "Week of season:** UNAVAILABLE" in section
+        assert "**Divisional matchup:** UNAVAILABLE" in section
+
+    def test_fetch_level_unavailable_renders_distinct_failure_marker(self):
+        ctx = SituationalContext(
+            status="unavailable", away_abbr="BAL", home_abbr="DAL", season=None,
+            week=None, week_found=False,
+            away_rest=None, home_rest=None, divisional=None,
+            error="nflreadpy load_schedules failed",
+        )
+        game = _sample_game(situational_context=ctx)
+        report = format_game_report(game)
+        section = report.split("## Situational Context")[1]
+        assert "UNAVAILABLE" in section
+        assert "nflreadpy load_schedules failed" in section
+
+    def test_missing_situational_context_key_treated_as_unavailable_not_crash(self):
+        game = _sample_game()
+        del game["situational_context"]
+        report = format_game_report(game)
+        assert "## Situational Context" in report
+        assert "UNAVAILABLE" in report.split("## Situational Context")[1]
+
+    def test_home_away_always_shown(self):
+        report = format_game_report(_GAME)
+        section = report.split("## Situational Context")[1]
+        assert "Baltimore Ravens (BAL) @ Dallas Cowboys (DAL)" in section
 
 
 # ---------------------------------------------------------------------------
@@ -997,6 +1095,6 @@ class TestLineLabelAndFiltering:
         report = format_game_report(game)
         assert "**UNAVAILABLE**" in report
 
-    def test_phase4_header_uses_ascii_dash(self):
+    def test_situational_context_header_present(self):
         report = format_game_report(_GAME)
-        assert "NOT YET AVAILABLE -- Phase 4" in report
+        assert "## Situational Context" in report

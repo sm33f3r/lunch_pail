@@ -15,6 +15,11 @@ os.environ.setdefault("REPORT_OUTPUT_DIR", "/tmp/reporter_test")
 os.environ.setdefault("POLLING_INTERVAL_SECONDS", "300")
 
 from reporter.enrich.injury_adapter import InjuryResult  # noqa: E402
+from reporter.enrich.situational_context import (  # noqa: E402
+    DivisionalGameResult,
+    RestDaysResult,
+    SituationalContext,
+)
 from reporter.enrich.team_stats_adapter import (  # noqa: E402
     NflreadpyError,
     TeamStatsResult,
@@ -52,6 +57,14 @@ _OK_WEATHER = WeatherResult(
     precipitation_probability_pct=5.0,
 )
 
+_OK_SITUATIONAL = SituationalContext(
+    status="ok", away_abbr="KC", home_abbr="MIA", season=2026,
+    week=3, week_found=True,
+    away_rest=RestDaysResult(status="ok", days=7),
+    home_rest=RestDaysResult(status="ok", days=7),
+    divisional=DivisionalGameResult(status="ok", is_divisional=False),
+)
+
 
 @pytest.fixture(autouse=True)
 def _patch_week_context():
@@ -74,6 +87,19 @@ def _patch_weather():
     override this with their own nested patch.
     """
     with patch("reporter.orchestrator.get_game_weather", return_value=_OK_WEATHER):
+        yield
+
+
+@pytest.fixture(autouse=True)
+def _patch_situational_context():
+    """
+    Every test in this module gets a successful situational-context fetch
+    by default -- this stage makes a schedule (nflreadpy) call in
+    production, and tests must stay offline. Tests that specifically
+    exercise the situational-context wiring override this with their own
+    nested patch.
+    """
+    with patch("reporter.orchestrator.get_situational_context", return_value=_OK_SITUATIONAL):
         yield
 
 
@@ -352,6 +378,54 @@ class TestRunOnce:
         written_games = mock_write.call_args[0][0]
         assert written_games[0]["weather"].status == "unavailable"
         assert written_games[1]["weather"] is _OK_WEATHER
+
+    # ------------------------------------------------------------------
+    # Situational-context-fetch wiring (Phase 4 final enrichment layer)
+    # ------------------------------------------------------------------
+
+    def test_fetches_situational_context_for_every_game(self):
+        games = [_game("KC", "MIA"), _game("PHI", "NYG")]
+        with patch("reporter.orchestrator.get_reportable_games", return_value=games), \
+             patch("reporter.orchestrator.get_team_injuries", return_value=_OK_RESULT), \
+             patch("reporter.orchestrator.get_team_rolling_stats", return_value=_OK_TEAM_STATS), \
+             patch("reporter.orchestrator.get_situational_context", return_value=_OK_SITUATIONAL) as mock_fetch, \
+             patch("reporter.orchestrator.write_all_reports", return_value=[]):
+            run_once()
+        mock_fetch.assert_has_calls(
+            [call("KC", "MIA", "2026-09-28"), call("PHI", "NYG", "2026-09-28")],
+            any_order=True,
+        )
+        assert mock_fetch.call_count == 2
+
+    def test_situational_context_attached_to_games_passed_to_write_all_reports(self):
+        games = [_game("KC", "MIA")]
+        with patch("reporter.orchestrator.get_reportable_games", return_value=games), \
+             patch("reporter.orchestrator.get_team_injuries", return_value=_OK_RESULT), \
+             patch("reporter.orchestrator.get_team_rolling_stats", return_value=_OK_TEAM_STATS), \
+             patch("reporter.orchestrator.get_situational_context", return_value=_OK_SITUATIONAL), \
+             patch("reporter.orchestrator.write_all_reports", return_value=[]) as mock_write:
+            run_once()
+        written_games = mock_write.call_args[0][0]
+        assert written_games[0]["situational_context"] is _OK_SITUATIONAL
+
+    def test_one_game_situational_context_failure_does_not_abort_other_games(self):
+        games = [_game("KC", "MIA"), _game("PHI", "NYG")]
+
+        def flaky(away_abbr, home_abbr, game_date):
+            if away_abbr == "KC":
+                raise RuntimeError("nflreadpy down")
+            return _OK_SITUATIONAL
+
+        with patch("reporter.orchestrator.get_reportable_games", return_value=games), \
+             patch("reporter.orchestrator.get_team_injuries", return_value=_OK_RESULT), \
+             patch("reporter.orchestrator.get_team_rolling_stats", return_value=_OK_TEAM_STATS), \
+             patch("reporter.orchestrator.get_situational_context", side_effect=flaky), \
+             patch("reporter.orchestrator.write_all_reports", return_value=[]) as mock_write:
+            run_once()  # must not raise
+
+        written_games = mock_write.call_args[0][0]
+        assert written_games[0]["situational_context"].status == "unavailable"
+        assert written_games[1]["situational_context"] is _OK_SITUATIONAL
 
 
 class TestRunForever:
