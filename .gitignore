@@ -40,3 +40,7 @@ reporter/enrich/INJURY_RECON*.md
 # Rolling team-performance stats recon narrative (same convention as injury recon)
 ROLLING_STATS_RECON*.md
 reporter/enrich/ROLLING_STATS_RECON*.md
+
+# Weather enrichment recon narrative (same convention as injury recon)
+WEATHER_RECON*.md
+reporter/enrich/WEATHER_RECON*.md

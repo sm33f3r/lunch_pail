@@ -20,6 +20,7 @@ from reporter.enrich.team_stats_adapter import (
     get_game_week_context,
     get_team_rolling_stats,
 )
+from reporter.enrich.weather_adapter import WeatherResult, get_game_weather
 from reporter.report.report_writer import write_all_reports
 from reporter.watcher.game_assembly import get_reportable_games
 
@@ -27,6 +28,9 @@ _INJURY_FETCH_FAILED = InjuryResult(records=[], source="unavailable", status="un
 _TEAM_STATS_FETCH_FAILED = TeamStatsResult(
     team_abbr="", status="unavailable", season=None,
     last4=None, season_to_date=None, error="unexpected exception in orchestrator",
+)
+_WEATHER_FETCH_FAILED = WeatherResult(
+    team_abbr="", status="unavailable", error="unexpected exception in orchestrator",
 )
 
 
@@ -88,6 +92,23 @@ def _fetch_week_context(team_abbr: str, game_date: str) -> WeekContext | None:
     return ctx
 
 
+def _fetch_game_weather(team_abbr: str, game_date: str, kickoff_utc: str | None) -> WeatherResult:
+    """
+    Fetch one game's weather, never raising.
+
+    get_game_weather() already degrades to status="unavailable" on seed-
+    lookup or Open-Meteo failures (and "forecast_not_yet_available" is a
+    normal, expected state, not a failure); this wrapper additionally
+    guards against an unexpected exception so a single game's weather
+    lookup can never abort that game's report or other games' reports.
+    """
+    try:
+        return get_game_weather(team_abbr, game_date, kickoff_utc)
+    except Exception as exc:
+        print(f"[reporter] weather fetch failed for {team_abbr!r}: {exc}", flush=True)
+        return _WEATHER_FETCH_FAILED
+
+
 def _attach_injuries(games: list[dict]) -> list[dict]:
     """Attach away_injuries/home_injuries InjuryResult objects to each game."""
     for game in games:
@@ -123,6 +144,18 @@ def _attach_week_context(games: list[dict]) -> list[dict]:
     return games
 
 
+def _attach_weather(games: list[dict]) -> list[dict]:
+    """
+    Attach a weather WeatherResult to each game, looked up for the HOME
+    team's stadium (weather is a property of the venue, not either team).
+    """
+    for game in games:
+        game_date = game.get("game_date") or ""
+        kickoff_utc = game.get("kickoff_utc")
+        game["weather"] = _fetch_game_weather(game["home_abbr"], game_date, kickoff_utc)
+    return games
+
+
 def run_once() -> None:
     """
     Execute one full pipeline cycle: game assembly, then injury enrichment,
@@ -153,6 +186,10 @@ def run_once() -> None:
         print("[reporter] Stage: week context fetch starting...", flush=True)
         games = _attach_week_context(games)
         print(f"[reporter] Stage: week context fetch done -- {len(games)} game(s).", flush=True)
+
+        print("[reporter] Stage: weather fetch starting...", flush=True)
+        games = _attach_weather(games)
+        print(f"[reporter] Stage: weather fetch done -- {len(games)} game(s).", flush=True)
 
         print("[reporter] Stage: report writing starting...", flush=True)
         written = write_all_reports(games)

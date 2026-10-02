@@ -20,6 +20,7 @@ from pathlib import Path
 from reporter.config import settings
 from reporter.enrich.injury_adapter import InjuryRecord, InjuryResult
 from reporter.enrich.team_stats_adapter import TeamStatsResult, WeekContext, WindowStats
+from reporter.enrich.weather_adapter import _FORECAST_HORIZON_DAYS, WeatherResult
 from reporter.watcher.game_assembly import get_reportable_games
 
 # Pattern used to identify report files written by a previous run so stale
@@ -39,6 +40,12 @@ _INJURIES_NOT_WIRED = InjuryResult(records=[], source="unavailable", status="una
 _TEAM_STATS_NOT_WIRED = TeamStatsResult(
     team_abbr="", status="unavailable", season=None,
     last4=None, season_to_date=None, error="team stats stage not wired in",
+)
+
+# Used when a game dict has no "weather" key at all (e.g. callers that
+# haven't wired the weather stage in yet).
+_WEATHER_NOT_WIRED = WeatherResult(
+    team_abbr="", status="unavailable", error="weather stage not wired in",
 )
 
 
@@ -405,6 +412,61 @@ def _team_performance_section(game: dict) -> str:
 
 
 # ---------------------------------------------------------------------------
+# Weather section
+# ---------------------------------------------------------------------------
+
+def _format_weather_section(result: WeatherResult) -> str:
+    """
+    Render the weather section. Each status renders a visually and
+    semantically distinct message -- in particular, "forecast not yet
+    available" (a known, expected state for games beyond Open-Meteo's
+    ~14-day horizon) must never read like "unavailable" (an actual fetch
+    failure). See reporter.enrich.weather_adapter.WeatherResult.
+    """
+    lines = ["## Weather\n"]
+
+    if result.status == "indoor":
+        venue = f" ({result.stadium_name})" if result.stadium_name else ""
+        lines.append(f"_Indoor stadium{venue} -- weather not applicable._\n")
+        return "\n".join(lines)
+
+    if result.status == "ok":
+        venue = f" at {result.stadium_name}" if result.stadium_name else ""
+        lines.append(f"**Game-time forecast{venue}:**\n")
+        temp = f"{result.temperature_f:.0f} F" if result.temperature_f is not None else "N/A"
+        wind = f"{result.wind_speed_mph:.0f} mph" if result.wind_speed_mph is not None else "N/A"
+        precip = f"{result.precipitation_in:.2f} in" if result.precipitation_in is not None else "N/A"
+        lines.append(f"  - Temperature: {temp}")
+        lines.append(f"  - Wind speed: {wind}")
+        lines.append(f"  - Precipitation: {precip}")
+        if result.precipitation_probability_pct is not None:
+            lines.append(f"  - Precipitation probability: {result.precipitation_probability_pct:.0f}%")
+        lines.append("")
+        return "\n".join(lines)
+
+    if result.status == "forecast_not_yet_available":
+        venue = f" ({result.stadium_name})" if result.stadium_name else ""
+        if result.days_until_available is not None:
+            eta = f" (available in roughly {result.days_until_available} more day(s))"
+        else:
+            eta = ""
+        days_out_str = f"{result.days_out} days out" if result.days_out is not None else "too far out"
+        lines.append(
+            f"**FORECAST NOT YET AVAILABLE** -- this game{venue} is {days_out_str}; "
+            f"Open-Meteo forecasts up to ~{_FORECAST_HORIZON_DAYS} days ahead{eta}. "
+            "This is not a failure -- it is simply too early for a real forecast "
+            "to exist yet.\n"
+        )
+        return "\n".join(lines)
+
+    # "unavailable" -- an actual fetch/lookup failure, distinct from the
+    # two states above.
+    reason = result.error or "no data returned"
+    lines.append(f"**UNAVAILABLE** -- weather data could not be fetched ({reason}).\n")
+    return "\n".join(lines)
+
+
+# ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
 
@@ -456,11 +518,15 @@ def format_game_report(game: dict) -> str:
     # sourced live from nflreadpy (see reporter/enrich/team_stats_adapter.py).
     sections.append(_team_performance_section(game))
 
-    # Phase 4 placeholder
+    # Weather -- game-time temperature/wind/precipitation for outdoor
+    # stadiums (see reporter/enrich/weather_adapter.py).
+    weather_result: WeatherResult = game.get("weather") or _WEATHER_NOT_WIRED
+    sections.append(_format_weather_section(weather_result))
+
+    # Phase 4 placeholder -- remaining not-yet-built items
     sections.append(
         "## NOT YET AVAILABLE -- Phase 4\n\n"
         "The following data will be added in Phase 4 and is absent from this report:\n\n"
-        "- **Weather conditions** -- for outdoor venues\n"
         "- **Line movement history** -- opening line vs. current spread/total\n"
     )
 

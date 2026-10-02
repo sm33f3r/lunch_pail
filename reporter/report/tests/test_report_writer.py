@@ -19,6 +19,7 @@ os.environ.setdefault("POLLING_INTERVAL_SECONDS", "300")
 
 from reporter.enrich.injury_adapter import InjuryRecord, InjuryResult  # noqa: E402
 from reporter.enrich.team_stats_adapter import TeamStatsResult, WeekContext, WindowStats  # noqa: E402
+from reporter.enrich.weather_adapter import WeatherResult  # noqa: E402
 from reporter.report.report_writer import (  # noqa: E402
     format_game_report,
     write_all_reports,
@@ -82,6 +83,7 @@ def _sample_game(
     week_context=None,
     game_status=None,
     final_score=None,
+    weather=None,
 ) -> dict:
     if moneyline is None:
         moneyline = {
@@ -124,6 +126,7 @@ def _sample_game(
         "totals":     totals,
         "game_status": game_status,
         "final_score": final_score,
+        "weather": weather,
     }
 
 
@@ -658,6 +661,74 @@ class TestGameStatusNote:
         # close to the header -- "prominent," not buried after other content.
         assert header_pos < note_pos < injury_pos
         assert note_pos - header_pos < 300
+
+
+# ---------------------------------------------------------------------------
+# Weather section -- indoor/ok/forecast_not_yet_available/unavailable must
+# each be visually and semantically distinct. See
+# reporter.enrich.weather_adapter.WeatherResult.
+# ---------------------------------------------------------------------------
+
+class TestWeatherSection:
+    def test_indoor_rendered_as_not_applicable_not_missing(self):
+        weather = WeatherResult(team_abbr="DET", status="indoor", stadium_name="Ford Field")
+        game = _sample_game(weather=weather)
+        report = format_game_report(game)
+        assert "Indoor stadium" in report
+        assert "Ford Field" in report
+        assert "UNAVAILABLE" not in report.split("## Weather")[1].split("## NOT YET AVAILABLE")[0]
+
+    def test_ok_renders_real_values(self):
+        weather = WeatherResult(
+            team_abbr="DAL", status="ok", stadium_name="AT&T Stadium",
+            temperature_f=68.0, wind_speed_mph=12.0, precipitation_in=0.02,
+            precipitation_probability_pct=30.0,
+        )
+        game = _sample_game(weather=weather)
+        report = format_game_report(game)
+        assert "68" in report
+        assert "12" in report
+        assert "0.02" in report
+        assert "30" in report
+
+    def test_forecast_not_yet_available_reads_as_not_possible_yet(self):
+        weather = WeatherResult(
+            team_abbr="DAL", status="forecast_not_yet_available", stadium_name="AT&T Stadium",
+            days_out=25, days_until_available=11,
+        )
+        game = _sample_game(weather=weather)
+        report = format_game_report(game)
+        assert "FORECAST NOT YET AVAILABLE" in report
+        assert "not a failure" in report
+        assert "UNAVAILABLE" not in report.split("## Weather")[1].split("## NOT YET AVAILABLE")[0]
+
+    def test_unavailable_renders_distinct_failure_marker(self):
+        weather = WeatherResult(team_abbr="DAL", status="unavailable", error="network timeout")
+        game = _sample_game(weather=weather)
+        report = format_game_report(game)
+        weather_section = report.split("## Weather")[1].split("## NOT YET AVAILABLE")[0]
+        assert "UNAVAILABLE" in weather_section
+        assert "network timeout" in weather_section
+        assert "FORECAST NOT YET AVAILABLE" not in weather_section
+
+    def test_forecast_not_yet_available_never_confused_with_unavailable(self):
+        horizon = WeatherResult(
+            team_abbr="DAL", status="forecast_not_yet_available",
+            days_out=25, days_until_available=11,
+        )
+        failure = WeatherResult(team_abbr="DAL", status="unavailable", error="boom")
+        horizon_report = format_game_report(_sample_game(weather=horizon))
+        failure_report = format_game_report(_sample_game(weather=failure))
+        horizon_section = horizon_report.split("## Weather")[1].split("## NOT YET AVAILABLE")[0]
+        failure_section = failure_report.split("## Weather")[1].split("## NOT YET AVAILABLE")[0]
+        assert "UNAVAILABLE" not in horizon_section
+        assert "FORECAST NOT YET AVAILABLE" not in failure_section
+
+    def test_missing_weather_key_treated_as_unavailable_not_crash(self):
+        game = _sample_game()
+        del game["weather"]
+        report = format_game_report(game)
+        assert "## Weather" in report
 
 
 # ---------------------------------------------------------------------------

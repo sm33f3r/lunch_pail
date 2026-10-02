@@ -1,0 +1,21 @@
+{
+  "error": true,
+  "reason": "Parameter 'start_date' is out of allowed range from 2026-06-30 to 2026-10-16",
+  "_recon_meta": {
+    "query_date_utc": "2026-10-02",
+    "target_game": "Cowboys @ Eagles, 2026-10-27 (Lincoln Financial Field, outdoor)",
+    "days_out": 25,
+    "http_status": 400,
+    "params": {
+      "latitude": 39.9007,
+      "longitude": -75.1675,
+      "hourly": "temperature_2m,wind_speed_10m,precipitation,precipitation_probability",
+      "temperature_unit": "fahrenheit",
+      "wind_speed_unit": "mph",
+      "precipitation_unit": "inch",
+      "timezone": "America/New_York",
+      "start_date": "2026-10-27",
+      "end_date": "2026-10-27"
+    }
+  }
+}

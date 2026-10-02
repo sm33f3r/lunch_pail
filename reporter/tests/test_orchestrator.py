@@ -21,6 +21,7 @@ from reporter.enrich.team_stats_adapter import (  # noqa: E402
     WeekContext,
     WindowStats,
 )
+from reporter.enrich.weather_adapter import WeatherResult  # noqa: E402
 from reporter.orchestrator import run_forever, run_once  # noqa: E402
 
 
@@ -45,6 +46,12 @@ _OK_TEAM_STATS = TeamStatsResult(
 # week context) don't pick up an unexpected staleness note.
 _OK_WEEK_CONTEXT = WeekContext(season=2026, current_week=3, game_week=3, found=True)
 
+_OK_WEATHER = WeatherResult(
+    team_abbr="MIA", status="ok", stadium_name="Hard Rock Stadium",
+    temperature_f=78.0, wind_speed_mph=6.0, precipitation_in=0.0,
+    precipitation_probability_pct=5.0,
+)
+
 
 @pytest.fixture(autouse=True)
 def _patch_week_context():
@@ -55,6 +62,18 @@ def _patch_week_context():
     week-context wiring override this with their own nested patch.
     """
     with patch("reporter.orchestrator.get_game_week_context", return_value=_OK_WEEK_CONTEXT):
+        yield
+
+
+@pytest.fixture(autouse=True)
+def _patch_weather():
+    """
+    Every test in this module gets a successful weather fetch by default --
+    this stage makes a live Open-Meteo call in production, and tests must
+    stay offline. Tests that specifically exercise the weather wiring
+    override this with their own nested patch.
+    """
+    with patch("reporter.orchestrator.get_game_weather", return_value=_OK_WEATHER):
         yield
 
 
@@ -272,6 +291,67 @@ class TestRunOnce:
             run_once()
         written_games = mock_write.call_args[0][0]
         assert written_games[0]["week_context"] is None
+
+    # ------------------------------------------------------------------
+    # Weather-fetch wiring (Phase 4 Step 6c)
+    # ------------------------------------------------------------------
+
+    def test_fetches_weather_for_home_team_only(self):
+        games = [_game("KC", "MIA"), _game("PHI", "NYG")]
+        with patch("reporter.orchestrator.get_reportable_games", return_value=games), \
+             patch("reporter.orchestrator.get_team_injuries", return_value=_OK_RESULT), \
+             patch("reporter.orchestrator.get_team_rolling_stats", return_value=_OK_TEAM_STATS), \
+             patch("reporter.orchestrator.get_game_weather", return_value=_OK_WEATHER) as mock_fetch, \
+             patch("reporter.orchestrator.write_all_reports", return_value=[]):
+            run_once()
+        # Weather is a venue property -- only the HOME team's stadium is
+        # looked up, never the away team's.
+        mock_fetch.assert_has_calls(
+            [call("MIA", "2026-09-28", None), call("NYG", "2026-09-28", None)],
+            any_order=True,
+        )
+        assert mock_fetch.call_count == 2
+
+    def test_weather_attached_to_games_passed_to_write_all_reports(self):
+        games = [_game("KC", "MIA")]
+        with patch("reporter.orchestrator.get_reportable_games", return_value=games), \
+             patch("reporter.orchestrator.get_team_injuries", return_value=_OK_RESULT), \
+             patch("reporter.orchestrator.get_team_rolling_stats", return_value=_OK_TEAM_STATS), \
+             patch("reporter.orchestrator.get_game_weather", return_value=_OK_WEATHER), \
+             patch("reporter.orchestrator.write_all_reports", return_value=[]) as mock_write:
+            run_once()
+        written_games = mock_write.call_args[0][0]
+        assert written_games[0]["weather"] is _OK_WEATHER
+
+    def test_weather_passes_kickoff_utc_when_present(self):
+        games = [_game("KC", "MIA")]
+        games[0]["kickoff_utc"] = "2026-09-28T17:00:00Z"
+        with patch("reporter.orchestrator.get_reportable_games", return_value=games), \
+             patch("reporter.orchestrator.get_team_injuries", return_value=_OK_RESULT), \
+             patch("reporter.orchestrator.get_team_rolling_stats", return_value=_OK_TEAM_STATS), \
+             patch("reporter.orchestrator.get_game_weather", return_value=_OK_WEATHER) as mock_fetch, \
+             patch("reporter.orchestrator.write_all_reports", return_value=[]):
+            run_once()
+        mock_fetch.assert_called_once_with("MIA", "2026-09-28", "2026-09-28T17:00:00Z")
+
+    def test_one_game_weather_failure_does_not_abort_other_games(self):
+        games = [_game("KC", "MIA"), _game("PHI", "NYG")]
+
+        def flaky(abbr, game_date, kickoff_utc):
+            if abbr == "MIA":
+                raise RuntimeError("Open-Meteo down")
+            return _OK_WEATHER
+
+        with patch("reporter.orchestrator.get_reportable_games", return_value=games), \
+             patch("reporter.orchestrator.get_team_injuries", return_value=_OK_RESULT), \
+             patch("reporter.orchestrator.get_team_rolling_stats", return_value=_OK_TEAM_STATS), \
+             patch("reporter.orchestrator.get_game_weather", side_effect=flaky), \
+             patch("reporter.orchestrator.write_all_reports", return_value=[]) as mock_write:
+            run_once()  # must not raise
+
+        written_games = mock_write.call_args[0][0]
+        assert written_games[0]["weather"].status == "unavailable"
+        assert written_games[1]["weather"] is _OK_WEATHER
 
 
 class TestRunForever:

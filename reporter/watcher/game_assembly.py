@@ -281,6 +281,7 @@ def build_game_report_data(
         "totals":     totals_data,
         "game_status": game_status,
         "final_score": final_score,
+        "kickoff_utc": rep.get("startTime"),
     }
 
 
