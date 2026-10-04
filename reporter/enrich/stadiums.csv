@@ -1,0 +1,40 @@
+team,stadium_name,city,state,latitude,longitude,timezone,surface,roof_type,is_outdoor,season_start,season_end
+ARI,State Farm Stadium,Glendale,Arizona,33.5276,-112.2626,America/Phoenix,grass,retractable,false,2006,
+ATL,Georgia Dome,Atlanta,Georgia,33.7573,-84.4008,America/New_York,turf,dome,false,1992,2016
+ATL,Mercedes-Benz Stadium,Atlanta,Georgia,33.7554,-84.401,America/New_York,turf,retractable,false,2017,
+BAL,M&T Bank Stadium,Baltimore,Maryland,39.278,-76.6227,America/New_York,grass,open,true,1998,
+BUF,Highmark Stadium,Orchard Park,New York,42.7738,-78.787,America/New_York,turf,open,true,1973,
+CAR,Bank of America Stadium,Charlotte,North Carolina,35.2258,-80.8528,America/New_York,grass,open,true,1996,
+CHI,Soldier Field,Chicago,Illinois,41.8623,-87.6167,America/Chicago,grass,open,true,2003,
+CIN,Paycor Stadium,Cincinnati,Ohio,39.0955,-84.5161,America/New_York,turf,open,true,2000,
+CLE,Huntington Bank Field,Cleveland,Ohio,41.5061,-81.6995,America/New_York,grass,open,true,1999,
+DAL,AT&T Stadium,Arlington,Texas,32.748,-97.093,America/Chicago,turf,retractable,false,2009,
+DEN,Empower Field at Mile High,Denver,Colorado,39.7439,-105.0201,America/Denver,grass,open,true,2001,
+DET,Ford Field,Detroit,Michigan,42.34,-83.0456,America/New_York,turf,dome,false,2002,
+GB,Lambeau Field,Green Bay,Wisconsin,44.5013,-88.0622,America/Chicago,grass,open,true,1957,
+HOU,NRG Stadium,Houston,Texas,29.6847,-95.4107,America/Chicago,grass,retractable,false,2002,
+IND,Lucas Oil Stadium,Indianapolis,Indiana,39.7601,-86.1639,America/Indiana/Indianapolis,turf,retractable,false,2008,
+JAX,EverBank Stadium,Jacksonville,Florida,30.3239,-81.6373,America/New_York,grass,open,true,1995,
+KC,Arrowhead Stadium,Kansas City,Missouri,39.0489,-94.4839,America/Chicago,grass,open,true,1972,
+LA,Edward Jones Dome,St. Louis,Missouri,38.6328,-90.1875,America/Chicago,turf,dome,false,1995,2015
+LA,Los Angeles Memorial Coliseum,Los Angeles,California,34.0141,-118.2879,America/Los_Angeles,grass,open,true,2016,2019
+LA,SoFi Stadium,Inglewood,California,33.9535,-118.3392,America/Los_Angeles,turf,dome,false,2020,
+LAC,Qualcomm Stadium,San Diego,California,32.7831,-117.1197,America/Los_Angeles,grass,open,true,1967,2016
+LAC,StubHub Center,Carson,California,33.8644,-118.2611,America/Los_Angeles,grass,open,true,2017,2019
+LAC,SoFi Stadium,Inglewood,California,33.9535,-118.3392,America/Los_Angeles,turf,retractable,false,2020,
+LV,Oakland-Alameda County Coliseum,Oakland,California,37.7516,-122.2005,America/Los_Angeles,grass,open,true,1995,2019
+LV,Allegiant Stadium,Las Vegas,Nevada,36.0909,-115.1833,America/Los_Angeles,turf,dome,false,2020,
+MIA,Hard Rock Stadium,Miami Gardens,Florida,25.958,-80.2389,America/New_York,grass,open,true,1987,
+MIN,TCF Bank Stadium,Minneapolis,Minnesota,44.974,-93.2277,America/Chicago,grass,open,true,2014,2015
+MIN,U.S. Bank Stadium,Minneapolis,Minnesota,44.9737,-93.2575,America/Chicago,turf,dome,false,2016,
+NE,Gillette Stadium,Foxborough,Massachusetts,42.0909,-71.2643,America/New_York,turf,open,true,2002,
+NO,Caesars Superdome,New Orleans,Louisiana,29.9511,-90.0812,America/Chicago,turf,dome,false,1975,
+NYG,MetLife Stadium,East Rutherford,New Jersey,40.8135,-74.0745,America/New_York,turf,open,true,2010,
+NYJ,MetLife Stadium,East Rutherford,New Jersey,40.8135,-74.0745,America/New_York,turf,open,true,2010,
+PHI,Lincoln Financial Field,Philadelphia,Pennsylvania,39.9007,-75.1675,America/New_York,turf,open,true,2003,
+PIT,Acrisure Stadium,Pittsburgh,Pennsylvania,40.4468,-80.0158,America/New_York,grass,open,true,2001,
+SEA,Lumen Field,Seattle,Washington,47.5952,-122.3316,America/Los_Angeles,turf,open,true,2002,
+SF,Levi's Stadium,Santa Clara,California,37.4032,-121.9697,America/Los_Angeles,grass,open,true,2014,
+TB,Raymond James Stadium,Tampa,Florida,27.9759,-82.5033,America/New_York,grass,open,true,1998,
+TEN,Nissan Stadium,Nashville,Tennessee,36.1665,-86.7713,America/Chicago,grass,open,true,1999,
+WAS,FedExField,Landover,Maryland,38.9077,-76.8644,America/New_York,grass,open,true,1997,
