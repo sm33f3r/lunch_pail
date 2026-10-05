@@ -238,6 +238,14 @@ def run_once() -> None:
         count = len(written)
         print(f"[reporter] Stage: report writing done -- {count} report(s) written.", flush=True)
 
+        failed = getattr(write_all_reports, "failed", None)
+        if isinstance(failed, list) and failed:
+            failed_names = ", ".join(name for name, _exc in failed)
+            print(
+                f"[reporter] WARNING: {len(failed)} report(s) failed to write: {failed_names}",
+                flush=True,
+            )
+
         if count:
             print(f"[reporter] Cycle complete: {count} report(s) written.", flush=True)
             for path in written:

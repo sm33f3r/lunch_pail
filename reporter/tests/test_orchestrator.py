@@ -145,6 +145,32 @@ class TestRunOnce:
         out = capsys.readouterr().out
         assert "0" in out
 
+    def test_prints_warning_for_failed_reports(self, capsys):
+        # write_all_reports.failed carries (filename, exception) tuples for
+        # games that failed to write -- run_once must surface them as a
+        # final WARNING line.
+        from pathlib import Path
+        written = [Path("/tmp/2026-09-28_KC_at_MIA.md")]
+        with patch("reporter.orchestrator.get_reportable_games", return_value=[]), \
+             patch(
+                 "reporter.orchestrator.write_all_reports",
+                 return_value=written,
+             ) as mock_write:
+            mock_write.failed = [("2026-09-28_PHI_at_NYG.md", ValueError("boom"))]
+            run_once()
+        out = capsys.readouterr().out
+        assert "WARNING" in out
+        assert "1" in out
+        assert "2026-09-28_PHI_at_NYG.md" in out
+
+    def test_no_warning_line_when_nothing_failed(self, capsys):
+        with patch("reporter.orchestrator.get_reportable_games", return_value=[]), \
+             patch("reporter.orchestrator.write_all_reports", return_value=[]) as mock_write:
+            mock_write.failed = []
+            run_once()
+        out = capsys.readouterr().out
+        assert "WARNING" not in out
+
     # ------------------------------------------------------------------
     # Injury-fetch wiring (Phase 4 Step 3 closeout)
     # ------------------------------------------------------------------

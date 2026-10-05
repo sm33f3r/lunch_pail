@@ -659,8 +659,17 @@ def write_all_reports(games: list[dict] | None = None) -> list[Path]:
     pattern that are no longer in the current reportable set) are deleted so
     they don't linger for games that ended or dropped below threshold.
 
+    A single game's write failure is non-fatal: it is logged and the
+    remaining games are still written. If that game had a report on disk
+    from a previous cycle, that stale file is deleted rather than left in
+    place -- a missing report is more honest than one whose "Generated"
+    footer silently falls behind, which would look fresh when it is not.
+    The list of games that failed is available via write_all_reports.failed
+    (name, exception) tuples, set fresh on each call, since the return
+    value's shape (list[Path]) is relied on by existing callers.
+
     Returns:
-        List of Paths of the files written in this run.
+        List of Paths of the files successfully written in this run.
     """
     output_dir = settings.report_output_dir
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -681,8 +690,28 @@ def write_all_reports(games: list[dict] | None = None) -> list[Path]:
                 existing.unlink()
 
     written = []
+    failed = []
     for game in games:
-        path = write_game_report(game, output_dir)
-        written.append(path)
+        filename = f"{game['game_date']}_{game['away_abbr']}_at_{game['home_abbr']}.md"
+        try:
+            path = write_game_report(game, output_dir)
+            written.append(path)
+        except Exception as exc:
+            print(
+                f"[reporter] ERROR writing report for {filename}: {exc}",
+                flush=True,
+            )
+            failed.append((filename, exc))
+            # A failed write must not leave a stale report looking fresh --
+            # delete any file left over from a previous successful cycle.
+            stale_path = output_dir / filename
+            try:
+                stale_path.unlink()
+            except FileNotFoundError:
+                pass
 
+    write_all_reports.failed = failed
     return written
+
+
+write_all_reports.failed = []

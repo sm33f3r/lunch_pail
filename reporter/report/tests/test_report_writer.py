@@ -1017,6 +1017,115 @@ class TestWriteAllReports:
 
 
 # ---------------------------------------------------------------------------
+# write_all_reports — one game's write failure is non-fatal
+# ---------------------------------------------------------------------------
+
+class TestWriteAllReportsPartialFailure:
+    def _games_4(self):
+        return [
+            _sample_game(game_id=1, away_abbr="KC",  home_abbr="MIA", game_date="2026-09-28"),
+            _sample_game(game_id=2, away_abbr="PHI", home_abbr="NYG", game_date="2026-09-28"),
+            _sample_game(game_id=3, away_abbr="DEN", home_abbr="SF",  game_date="2026-09-28"),
+            _sample_game(game_id=4, away_abbr="BUF", home_abbr="NE",  game_date="2026-09-28"),
+        ]
+
+    def _failing_write_game_report(self, bad_filename):
+        """Build a write_game_report stand-in that raises for one game only."""
+        from reporter.report.report_writer import write_game_report as real_write
+
+        def _fake(game, output_dir):
+            filename = f"{game['game_date']}_{game['away_abbr']}_at_{game['home_abbr']}.md"
+            if filename == bad_filename:
+                raise ValueError("boom")
+            return real_write(game, output_dir)
+
+        return _fake
+
+    def test_failure_on_one_game_still_writes_the_rest(self, tmp_path):
+        games = self._games_4()
+        bad_filename = "2026-09-28_PHI_at_NYG.md"
+
+        with patch("reporter.report.report_writer.get_reportable_games", return_value=games), \
+             patch("reporter.report.report_writer.settings") as mock_settings, \
+             patch(
+                 "reporter.report.report_writer.write_game_report",
+                 side_effect=self._failing_write_game_report(bad_filename),
+             ):
+            mock_settings.report_output_dir = tmp_path
+            written = write_all_reports()
+
+        written_names = {p.name for p in written}
+        assert written_names == {
+            "2026-09-28_KC_at_MIA.md",
+            "2026-09-28_DEN_at_SF.md",
+            "2026-09-28_BUF_at_NE.md",
+        }
+        assert bad_filename not in written_names
+
+    def test_failed_game_reported_in_failed_list(self, tmp_path):
+        games = self._games_4()
+        bad_filename = "2026-09-28_PHI_at_NYG.md"
+
+        with patch("reporter.report.report_writer.get_reportable_games", return_value=games), \
+             patch("reporter.report.report_writer.settings") as mock_settings, \
+             patch(
+                 "reporter.report.report_writer.write_game_report",
+                 side_effect=self._failing_write_game_report(bad_filename),
+             ):
+            mock_settings.report_output_dir = tmp_path
+            write_all_reports()
+
+        failed_names = [name for name, _exc in write_all_reports.failed]
+        assert failed_names == [bad_filename]
+
+    def test_no_failures_leaves_failed_list_empty(self, tmp_path):
+        games = self._games_4()
+        with patch("reporter.report.report_writer.get_reportable_games", return_value=games), \
+             patch("reporter.report.report_writer.settings") as mock_settings:
+            mock_settings.report_output_dir = tmp_path
+            write_all_reports()
+
+        assert write_all_reports.failed == []
+
+    def test_stale_file_deleted_when_rewrite_fails(self, tmp_path):
+        # A report that fails to rewrite must not look fresh -- the old
+        # file (which would otherwise sit there with a stale "Generated"
+        # footer) is deleted rather than left in place.
+        games = self._games_4()
+        bad_filename = "2026-09-28_PHI_at_NYG.md"
+        stale_path = tmp_path / bad_filename
+        stale_path.write_text("stale content from a previous cycle", encoding="utf-8")
+
+        with patch("reporter.report.report_writer.get_reportable_games", return_value=games), \
+             patch("reporter.report.report_writer.settings") as mock_settings, \
+             patch(
+                 "reporter.report.report_writer.write_game_report",
+                 side_effect=self._failing_write_game_report(bad_filename),
+             ):
+            mock_settings.report_output_dir = tmp_path
+            write_all_reports()
+
+        assert not stale_path.exists(), "Stale report must be deleted, not left looking fresh"
+
+    def test_failure_logged_to_stdout(self, tmp_path, capsys):
+        games = self._games_4()
+        bad_filename = "2026-09-28_PHI_at_NYG.md"
+
+        with patch("reporter.report.report_writer.get_reportable_games", return_value=games), \
+             patch("reporter.report.report_writer.settings") as mock_settings, \
+             patch(
+                 "reporter.report.report_writer.write_game_report",
+                 side_effect=self._failing_write_game_report(bad_filename),
+             ):
+            mock_settings.report_output_dir = tmp_path
+            write_all_reports()
+
+        captured = capsys.readouterr()
+        assert bad_filename in captured.out
+        assert "boom" in captured.out
+
+
+# ---------------------------------------------------------------------------
 # Line column, placeholder filtering, ASCII-only content
 # ---------------------------------------------------------------------------
 
